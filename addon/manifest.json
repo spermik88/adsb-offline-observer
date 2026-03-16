@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Gmail Auto Sender",
+  "version": "1.0",
+  "description": "Автоматическая рассылка писем на Gmail по списку из файла.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://mail.google.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Открыть отправитель"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+}
