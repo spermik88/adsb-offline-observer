@@ -14,5 +14,8 @@ public sealed class ObservationSettings
     public int PpmCorrection { get; set; }
     public string DecoderHost { get; set; } = "127.0.0.1";
     public int DecoderPort { get; set; } = 30003;
+    public bool DecoderAutoStart { get; set; } = false;
+    public string? DecoderExecutablePath { get; set; }
+    public string? DecoderArguments { get; set; }
     public bool UseSimulationFallback { get; set; } = true;
 }
