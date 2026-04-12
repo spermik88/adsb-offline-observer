@@ -14,6 +14,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly IDeviceDetector _deviceDetector;
     private readonly IAdsbDecoderAdapter _liveDecoder;
     private readonly IAdsbDecoderAdapter _simulationDecoder;
+    private readonly IDecoderProcessService _decoderProcessService;
     private readonly IRecognitionImportService _recognitionImportService;
     private readonly ITrackExportService _trackExportService;
     private readonly IMapTileService _mapTileService;
@@ -33,6 +34,7 @@ public sealed class MainViewModel : ObservableObject
     private string _deviceStatusText = "Checking SDR device…";
     private string _modeText = "Mode: Idle";
     private string _recognitionStatusText = "Recognition DB: not loaded";
+    private string _decoderStatusText = "Decoder process: not started";
     private string _mapStatusText = "Map package: not selected";
     private bool _isLiveRunning;
     private bool _isPlaybackMode;
@@ -45,6 +47,7 @@ public sealed class MainViewModel : ObservableObject
         IDeviceDetector deviceDetector,
         IAdsbDecoderAdapter liveDecoder,
         IAdsbDecoderAdapter simulationDecoder,
+        IDecoderProcessService decoderProcessService,
         IRecognitionImportService recognitionImportService,
         ITrackExportService trackExportService,
         IMapTileService mapTileService,
@@ -56,12 +59,20 @@ public sealed class MainViewModel : ObservableObject
         _deviceDetector = deviceDetector;
         _liveDecoder = liveDecoder;
         _simulationDecoder = simulationDecoder;
+        _decoderProcessService = decoderProcessService;
         _recognitionImportService = recognitionImportService;
         _trackExportService = trackExportService;
         _mapTileService = mapTileService;
         _trackerService = trackerService;
         _playbackService = playbackService;
         _dataRoot = dataRoot;
+        _decoderProcessService.StatusChanged += (_, message) =>
+        {
+            _ = Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                DecoderStatusText = message;
+            });
+        };
 
         StartLiveCommand = new RelayCommand(() => _ = StartLiveAsync(), () => !_isLiveRunning);
         StopLiveCommand = new RelayCommand(() => _ = StopLiveAsync(), () => _isLiveRunning);
@@ -87,6 +98,7 @@ public sealed class MainViewModel : ObservableObject
     public string DeviceStatusText { get => _deviceStatusText; private set => SetProperty(ref _deviceStatusText, value); }
     public string ModeText { get => _modeText; private set => SetProperty(ref _modeText, value); }
     public string RecognitionStatusText { get => _recognitionStatusText; private set => SetProperty(ref _recognitionStatusText, value); }
+    public string DecoderStatusText { get => _decoderStatusText; private set => SetProperty(ref _decoderStatusText, value); }
     public string MapStatusText { get => _mapStatusText; private set => SetProperty(ref _mapStatusText, value); }
     public double CenterLatitude { get => _settings.CenterLatitude; set { _settings.CenterLatitude = value; RaisePropertyChanged(); NotifyVisualStateChanged(); } }
     public double CenterLongitude { get => _settings.CenterLongitude; set { _settings.CenterLongitude = value; RaisePropertyChanged(); NotifyVisualStateChanged(); } }
@@ -160,6 +172,7 @@ public sealed class MainViewModel : ObservableObject
         StatusText = "Starting live ingest…";
 
         await _storageService.SaveSettingsAsync(_settings, _liveCts.Token);
+        await _decoderProcessService.StartAsync(_settings, _liveCts.Token);
 
         _ = Task.Run(async () =>
         {
@@ -226,7 +239,7 @@ public sealed class MainViewModel : ObservableObject
         StopLiveCommand.RaiseCanExecuteChanged();
         ModeText = "Mode: Idle";
         StatusText = "Live ingest stopped";
-        return Task.CompletedTask;
+        return _decoderProcessService.StopAsync(CancellationToken.None);
     }
 
     public async Task<int> ImportRecognitionAsync(string path)

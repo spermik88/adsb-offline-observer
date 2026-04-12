@@ -212,6 +212,7 @@
                         CornerRadius="10">
                     <StackPanel>
                         <TextBlock Text="{Binding DeviceStatusText}" Foreground="#D6E4F0" />
+                        <TextBlock Text="{Binding DecoderStatusText}" Foreground="#AFC5D8" />
                         <TextBlock Text="{Binding ModeText}" Foreground="#AFC5D8" />
                         <TextBlock Text="{Binding MapStatusText}" Foreground="#AFC5D8" />
                         <TextBlock Text="{Binding RecognitionStatusText}" Foreground="#AFC5D8" />
