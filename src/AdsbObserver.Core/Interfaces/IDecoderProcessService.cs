@@ -4,8 +4,9 @@ namespace AdsbObserver.Core.Interfaces;
 
 public interface IDecoderProcessService
 {
-    event EventHandler<string>? StatusChanged;
+    event EventHandler<DecoderProcessStatus>? StatusChanged;
     bool IsRunning { get; }
-    Task StartAsync(ObservationSettings settings, CancellationToken cancellationToken);
+    DecoderProcessStatus CurrentStatus { get; }
+    Task<DecoderProcessStatus> StartAsync(ObservationSettings settings, CancellationToken cancellationToken);
     Task StopAsync(CancellationToken cancellationToken);
 }

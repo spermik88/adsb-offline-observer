@@ -1,0 +1,7 @@
+Bundled binary expected:
+- File: readsb.exe
+- Source: verified Windows build of readsb
+- Version: record the exact tag or commit here before release
+- Checksum: record SHA256 here before release
+
+Do not ship the setup until this file is filled and the actual readsb.exe is present.

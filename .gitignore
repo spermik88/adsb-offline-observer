@@ -3,3 +3,7 @@
 bin/
 obj/
 .vs/
+artifacts/
+src/artifacts/
+tests/**/bin/
+tests/**/obj/

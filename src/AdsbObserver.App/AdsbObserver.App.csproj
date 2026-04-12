@@ -9,6 +9,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Include="BundledAssets\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\AdsbObserver.Core\AdsbObserver.Core.csproj" />
     <ProjectReference Include="..\AdsbObserver.Infrastructure\AdsbObserver.Infrastructure.csproj" />
   </ItemGroup>

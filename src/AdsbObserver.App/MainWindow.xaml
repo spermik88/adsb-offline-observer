@@ -54,6 +54,10 @@
                             Command="{Binding RefreshDevicesCommand}"
                             Padding="14,8"
                             Margin="0,0,8,0" />
+                    <Button Content="Prepare Live"
+                            Command="{Binding PrepareLiveCommand}"
+                            Padding="14,8"
+                            Margin="0,0,8,0" />
                     <Button Content="Download Map"
                             Command="{Binding DownloadMapCommand}"
                             Padding="14,8"
@@ -92,7 +96,26 @@
             </DockPanel>
         </Border>
 
-        <Grid Grid.Row="1">
+        <Border Grid.Row="0"
+                Margin="0,88,0,12"
+                Padding="12"
+                Background="#2A2618"
+                BorderBrush="#8F6A20"
+                BorderThickness="1"
+                CornerRadius="10">
+            <StackPanel>
+                <TextBlock Text="{Binding SetupHeadlineText}"
+                           Foreground="#FCE8B2"
+                           FontWeight="SemiBold" />
+                <TextBlock Text="{Binding SetupGuidanceText}"
+                           Margin="0,6,0,0"
+                           Foreground="#F8D88F"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="1"
+              Margin="0,76,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="3*" />
                 <ColumnDefinition Width="400" />
@@ -210,14 +233,99 @@
                         BorderBrush="#273746"
                         BorderThickness="1"
                         CornerRadius="10">
-                    <StackPanel>
-                        <TextBlock Text="{Binding DeviceStatusText}" Foreground="#D6E4F0" />
-                        <TextBlock Text="{Binding DecoderStatusText}" Foreground="#AFC5D8" />
-                        <TextBlock Text="{Binding ModeText}" Foreground="#AFC5D8" />
-                        <TextBlock Text="{Binding MapStatusText}" Foreground="#AFC5D8" />
-                        <TextBlock Text="{Binding RecognitionStatusText}" Foreground="#AFC5D8" />
-                        <TextBlock Text="{Binding ActiveTrackCount, StringFormat=Active tracks: {0}}" Foreground="#AFC5D8" />
-                    </StackPanel>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel>
+                            <TextBlock Text="Live Settings"
+                                       Foreground="#D6E4F0"
+                                       FontWeight="SemiBold"
+                                       Margin="0,0,0,10" />
+                            <UniformGrid Columns="2" Rows="5">
+                                <StackPanel Margin="0,0,10,10">
+                                    <TextBlock Text="RTL-SDR Device" Foreground="#AFC5D8" />
+                                    <ComboBox ItemsSource="{Binding AvailableDevices}"
+                                              SelectedValue="{Binding SelectedDeviceId}"
+                                              SelectedValuePath="DeviceId"
+                                              DisplayMemberPath="Name" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,10">
+                                    <TextBlock Text="Device Selection" Foreground="#AFC5D8" />
+                                    <TextBlock Text="{Binding SelectedDeviceSummary}"
+                                               Foreground="#D6E4F0"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,10">
+                                    <TextBlock Text="Center Latitude" Foreground="#AFC5D8" />
+                                    <TextBox Text="{Binding CenterLatitude, UpdateSourceTrigger=LostFocus}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,10">
+                                    <TextBlock Text="Center Longitude" Foreground="#AFC5D8" />
+                                    <TextBox Text="{Binding CenterLongitude, UpdateSourceTrigger=LostFocus}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,10">
+                                    <TextBlock Text="Radius (km)" Foreground="#AFC5D8" />
+                                    <TextBox Text="{Binding RadiusKilometers, UpdateSourceTrigger=LostFocus}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,10">
+                                    <TextBlock Text="SBS-1 Port" Foreground="#AFC5D8" />
+                                    <TextBox Text="{Binding DecoderPort, UpdateSourceTrigger=LostFocus}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,10">
+                                    <TextBlock Text="Gain" Foreground="#AFC5D8" />
+                                    <TextBox Text="{Binding Gain, UpdateSourceTrigger=LostFocus}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,10">
+                                    <TextBlock Text="PPM" Foreground="#AFC5D8" />
+                                    <TextBox Text="{Binding PpmCorrection, UpdateSourceTrigger=LostFocus}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,10,10">
+                                    <TextBlock Text="Sample Rate" Foreground="#AFC5D8" />
+                                    <TextBox Text="{Binding SampleRate, UpdateSourceTrigger=LostFocus}" />
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,10">
+                                    <TextBlock Text="Decoder Host" Foreground="#AFC5D8" />
+                                    <TextBox Text="{Binding DecoderHost, UpdateSourceTrigger=LostFocus}" />
+                                </StackPanel>
+                            </UniformGrid>
+
+                            <CheckBox Content="Use simulation fallback if bundled live backend fails"
+                                      IsChecked="{Binding UseSimulationFallback}"
+                                      Margin="0,0,0,10"
+                                      Foreground="#D6E4F0" />
+
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Save Settings"
+                                        Command="{Binding SaveSettingsCommand}"
+                                        Padding="12,6"
+                                        Margin="0,0,8,0" />
+                                <Button Content="Prepare Live"
+                                        Command="{Binding PrepareLiveCommand}"
+                                        Padding="12,6" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="1" Margin="0,16,0,0">
+                            <TextBlock Text="Runtime Status"
+                                       Foreground="#D6E4F0"
+                                       FontWeight="SemiBold"
+                                       Margin="0,0,0,8" />
+                            <TextBlock Text="App installed: yes" Foreground="#D6E4F0" />
+                            <TextBlock Text="{Binding BackendReadinessText}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding DriverReadinessText}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding LiveReadinessText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding LiveSourceText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding DeviceStatusText}" Foreground="#D6E4F0" Margin="0,8,0,0" />
+                            <TextBlock Text="{Binding DecoderStatusText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding ModeText}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding MapStatusText}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding RecognitionStatusText}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding ActiveTrackCount, StringFormat=Active tracks: {0}}" Foreground="#AFC5D8" />
+                        </StackPanel>
+                    </Grid>
                 </Border>
             </Grid>
         </Grid>

@@ -28,6 +28,7 @@ public partial class App : Application
             new Sbs1TcpDecoderAdapter(),
             new SimulatedDecoderAdapter(),
             new DecoderProcessService(),
+            new SdrDriverBootstrapService(new RtlSdrDeviceDetector()),
             new CsvRecognitionImportService(storageService),
             new CsvTrackExportService(storageService),
             new MbTilesMapService(),

@@ -4,4 +4,7 @@
     <Project Path="src/AdsbObserver.Core/AdsbObserver.Core.csproj" />
     <Project Path="src/AdsbObserver.Infrastructure/AdsbObserver.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AdsbObserver.Tests/AdsbObserver.Tests.csproj" />
+  </Folder>
 </Solution>
