@@ -1,0 +1,15 @@
+C:/Users/bebra/Documents/Playground/external/zstd-build/CMakeFiles/clean-all.dir
+C:/Users/bebra/Documents/Playground/external/zstd-build/CMakeFiles/edit_cache.dir
+C:/Users/bebra/Documents/Playground/external/zstd-build/CMakeFiles/rebuild_cache.dir
+C:/Users/bebra/Documents/Playground/external/zstd-build/CMakeFiles/list_install_components.dir
+C:/Users/bebra/Documents/Playground/external/zstd-build/CMakeFiles/install.dir
+C:/Users/bebra/Documents/Playground/external/zstd-build/CMakeFiles/install/local.dir
+C:/Users/bebra/Documents/Playground/external/zstd-build/CMakeFiles/install/strip.dir
+C:/Users/bebra/Documents/Playground/external/zstd-build/lib/CMakeFiles/libzstd_static.dir
+C:/Users/bebra/Documents/Playground/external/zstd-build/lib/CMakeFiles/uninstall.dir
+C:/Users/bebra/Documents/Playground/external/zstd-build/lib/CMakeFiles/edit_cache.dir
+C:/Users/bebra/Documents/Playground/external/zstd-build/lib/CMakeFiles/rebuild_cache.dir
+C:/Users/bebra/Documents/Playground/external/zstd-build/lib/CMakeFiles/list_install_components.dir
+C:/Users/bebra/Documents/Playground/external/zstd-build/lib/CMakeFiles/install.dir
+C:/Users/bebra/Documents/Playground/external/zstd-build/lib/CMakeFiles/install/local.dir
+C:/Users/bebra/Documents/Playground/external/zstd-build/lib/CMakeFiles/install/strip.dir

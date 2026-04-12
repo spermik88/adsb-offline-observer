@@ -1,0 +1,8 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/Users/bebra/Documents/Playground/external/zstd-build/cmake_install.cmake",
+		"C:/Users/bebra/Documents/Playground/external/zstd-build/lib/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
