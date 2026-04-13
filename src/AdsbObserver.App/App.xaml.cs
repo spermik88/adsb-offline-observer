@@ -11,6 +11,8 @@ namespace AdsbObserver.App;
 
 public partial class App : Application
 {
+    private IAiDiagnosticLogService? _aiLogService;
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -30,6 +32,24 @@ public partial class App : Application
             return;
         }
 
+        var settings = await storageService.GetSettingsAsync(CancellationToken.None);
+        _aiLogService = new AiDiagnosticLogService();
+        await _aiLogService.StartSessionAsync(workspace, settings, CancellationToken.None);
+        DispatcherUnhandledException += async (_, args) =>
+        {
+            if (_aiLogService is not null)
+            {
+                await _aiLogService.LogExceptionAsync(args.Exception, nameof(App), "Unhandled dispatcher exception");
+            }
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            if (_aiLogService is not null && args.ExceptionObject is Exception ex)
+            {
+                _ = _aiLogService.LogExceptionAsync(ex, nameof(App), "Unhandled domain exception");
+            }
+        };
+
         var viewModel = new MainViewModel(
             storageService,
             new RtlSdrDeviceDetector(),
@@ -42,6 +62,7 @@ public partial class App : Application
             new MbTilesMapService(),
             new AircraftTrackerService(),
             new PlaybackService(),
+            _aiLogService,
             workspace,
             compatibility);
 

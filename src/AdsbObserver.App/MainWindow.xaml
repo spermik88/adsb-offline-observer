@@ -37,6 +37,7 @@
                     <Button Content="Center Selected" Command="{Binding CenterOnSelectedCommand}" Padding="14,8" Margin="0,0,8,8" />
                     <Button Content="Reset Center" Command="{Binding ResetCenterCommand}" Padding="14,8" Margin="0,0,8,8" />
                     <Button Content="Show Selected" Command="{Binding ToggleSelectedOnlyCommand}" Padding="14,8" Margin="0,0,8,8" />
+                    <Button Content="Mark Incident" Command="{Binding MarkIncidentCommand}" Padding="14,8" Margin="0,0,8,8" />
                     <Button Content="Import Recognition" Click="ImportRecognition_Click" Padding="14,8" Margin="0,0,8,8" />
                     <Button Content="Export CSV" Click="ExportCsv_Click" Padding="14,8" Margin="0,0,0,8" />
                 </WrapPanel>
@@ -196,6 +197,7 @@
                             <TextBlock Text="{Binding TrackMetricsText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding MapStatusText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding RecognitionStatusText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding AiLogsStatusText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding CapabilitiesText}" Foreground="#D6E4F0" Margin="0,8,0,0" TextWrapping="Wrap" />
                             <TextBlock Text="Recent Events" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,8,0,4" />
                             <ItemsControl ItemsSource="{Binding RecentEvents}" Margin="0,8,0,0">
@@ -225,6 +227,11 @@
                                 <TextBox Text="{Binding DecoderHost, UpdateSourceTrigger=LostFocus}" Margin="0,0,0,8" />
                             </UniformGrid>
                             <CheckBox Content="Use simulation fallback" IsChecked="{Binding UseSimulationFallback}" Foreground="#D6E4F0" Margin="0,0,0,10" />
+                            <CheckBox Content="AI logs enabled" IsChecked="{Binding AiLogsEnabled}" Foreground="#D6E4F0" Margin="0,0,0,10" />
+                            <UniformGrid Columns="2" Margin="0,0,0,10">
+                                <Button Content="Open AI Logs" Command="{Binding OpenAiLogsFolderCommand}" Padding="12,6" Margin="0,0,8,0" />
+                                <Button Content="Copy AI Path" Command="{Binding CopyAiLogsPathCommand}" Padding="12,6" />
+                            </UniformGrid>
                             <Button Content="Save Settings" Command="{Binding SaveSettingsCommand}" Padding="12,6" />
                         </StackPanel>
                     </Border>

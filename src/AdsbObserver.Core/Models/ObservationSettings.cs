@@ -30,4 +30,5 @@ public sealed class ObservationSettings
     public string BundledDriverSetupRelativePath { get; set; } = @"drivers\rtl-sdr\install-driver.cmd";
     public string BundledDriverInfRelativePath { get; set; } = @"drivers\rtl-sdr\rtlsdr-winusb.inf";
     public bool UseSimulationFallback { get; set; } = true;
+    public bool AiLogsEnabled { get; set; } = true;
 }

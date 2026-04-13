@@ -36,6 +36,7 @@ public partial class MainWindow : Window
             RenderOverlay();
         };
 
+        await ViewModel.LogExternalEventAsync("app.session", "info", nameof(MainWindow), "Main window loaded");
         await RenderBaseAsync();
         RenderOverlay();
     }
@@ -45,7 +46,12 @@ public partial class MainWindow : Window
         var dialog = new OpenFileDialog { Filter = "CSV/TSV files|*.csv;*.tsv|All files|*.*" };
         if (dialog.ShowDialog(this) == true)
         {
+            await ViewModel.LogExternalEventAsync("ui.command", "info", nameof(MainWindow), "Import dialog accepted", new { dialog.FileName });
             await ViewModel.ImportRecognitionAsync(dialog.FileName);
+        }
+        else
+        {
+            await ViewModel.LogExternalEventAsync("ui.command", "info", nameof(MainWindow), "Import dialog canceled");
         }
     }
 
@@ -54,7 +60,12 @@ public partial class MainWindow : Window
         var dialog = new SaveFileDialog { Filter = "CSV files|*.csv", FileName = ViewModel.SelectedTrack?.Icao is { Length: > 0 } icao ? $"{icao}.csv" : "tracks.csv" };
         if (dialog.ShowDialog(this) == true)
         {
+            await ViewModel.LogExternalEventAsync("ui.command", "info", nameof(MainWindow), "Export dialog accepted", new { dialog.FileName });
             await ViewModel.ExportTracksAsync(dialog.FileName);
+        }
+        else
+        {
+            await ViewModel.LogExternalEventAsync("ui.command", "info", nameof(MainWindow), "Export dialog canceled");
         }
     }
 
@@ -76,6 +87,8 @@ public partial class MainWindow : Window
         {
             return;
         }
+
+        await ViewModel.LogExternalEventAsync("map.render", "info", nameof(MainWindow), "Base render started", new { state.Zoom, state.Lat, state.Lon, state.Layer });
 
         if (_lastBaseState?.Layer != state.Layer)
         {
@@ -101,6 +114,8 @@ public partial class MainWindow : Window
             {
             }
         }
+
+        await ViewModel.LogExternalEventAsync("map.render", "info", nameof(MainWindow), "Base render finished", new { state.Zoom, state.Layer, tiles = TileCanvas.Children.Count });
     }
 
     private void DrawFallbackBackground()
@@ -174,6 +189,7 @@ public partial class MainWindow : Window
                     _tileCache[key] = bitmap;
                     _tileCacheOrder.Enqueue(key);
                     TrimTileCache();
+                    await ViewModel.LogExternalEventAsync("map.tiles", "info", nameof(MainWindow), "Tile cached", new { key, cacheSize = _tileCache.Count });
                 }
 
                 var image = new Image { Width = 256, Height = 256, Source = bitmap };
@@ -213,6 +229,7 @@ public partial class MainWindow : Window
         {
             var key = _tileCacheOrder.Dequeue();
             _tileCache.Remove(key);
+            _ = ViewModel.LogExternalEventAsync("map.tiles", "info", nameof(MainWindow), "Tile evicted", new { key, cacheSize = _tileCache.Count });
         }
     }
 
@@ -220,5 +237,6 @@ public partial class MainWindow : Window
     {
         _tileCache.Clear();
         _tileCacheOrder.Clear();
+        _ = ViewModel.LogExternalEventAsync("map.tiles", "info", nameof(MainWindow), "Tile cache cleared");
     }
 }
