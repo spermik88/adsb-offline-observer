@@ -52,6 +52,13 @@ public sealed class MainViewModel : ObservableObject
     private string _maxSpeedText = string.Empty;
     private string _maxDistanceText = string.Empty;
     private string _trackMetricsText = "Треки: 0 active / 0 stale / 0 with position";
+    private string _sourceSummaryText = "Источник: idle";
+    private string _decoderFailureText = "Decoder: явных ошибок нет";
+    private string _historyIcaoText = string.Empty;
+    private string _historyFromText = string.Empty;
+    private string _historyToText = string.Empty;
+    private bool _historySelectedOnly;
+    private bool _historyWithCoordinatesOnly = true;
     private bool _isLiveRunning;
     private bool _isPlaybackMode;
     private bool _withPositionOnly;
@@ -62,7 +69,7 @@ public sealed class MainViewModel : ObservableObject
     public MainViewModel(IStorageService storageService, IDeviceDetector deviceDetector, IAdsbDecoderAdapter liveDecoder, IAdsbDecoderAdapter simulationDecoder, IDecoderProcessService decoderProcessService, ISdrDriverBootstrapService driverBootstrapService, IRecognitionImportService recognitionImportService, ITrackExportService trackExportService, IMapTileService mapTileService, AircraftTrackerService trackerService, PlaybackService playbackService, PortableWorkspacePaths workspace, StorageCompatibilityStatus storageCompatibility)
     {
         _storageService = storageService; _deviceDetector = deviceDetector; _liveDecoder = liveDecoder; _simulationDecoder = simulationDecoder; _decoderProcessService = decoderProcessService; _driverBootstrapService = driverBootstrapService; _recognitionImportService = recognitionImportService; _trackExportService = trackExportService; _mapTileService = mapTileService; _trackerService = trackerService; _playbackCoordinator = new PlaybackCoordinator(playbackService); _workspace = workspace; _storageCompatibility = storageCompatibility;
-        _decoderProcessService.StatusChanged += (_, status) => _ = InvokeOnUiAsync(() => DecoderStatusText = TranslateDecoderStatus(status.Message));
+        _decoderProcessService.StatusChanged += (_, status) => _ = InvokeOnUiAsync(() => ApplyDecoderStatus(status));
         StartLiveCommand = new RelayCommand(() => _ = StartLiveAsync(), () => !_isLiveRunning);
         StopLiveCommand = new RelayCommand(() => _ = StopLiveAsync(), () => _isLiveRunning);
         RefreshDevicesCommand = new RelayCommand(() => _ = RefreshDevicesAsync());
@@ -113,6 +120,8 @@ public sealed class MainViewModel : ObservableObject
     public string CapabilitiesText { get => _capabilitiesText; private set => SetProperty(ref _capabilitiesText, value); }
     public string MessagesPerSecondText => _liveStatusState.MessagesPerSecondText;
     public string TrackMetricsText { get => _trackMetricsText; private set => SetProperty(ref _trackMetricsText, value); }
+    public string SourceSummaryText { get => _sourceSummaryText; private set => SetProperty(ref _sourceSummaryText, value); }
+    public string DecoderFailureText { get => _decoderFailureText; private set => SetProperty(ref _decoderFailureText, value); }
     public double CenterLatitude { get => _settings.CenterLatitude; set { _settings.CenterLatitude = value; RaisePropertyChanged(); NotifyVisualStateChanged(); PublishTrackSnapshot(); } }
     public double CenterLongitude { get => _settings.CenterLongitude; set { _settings.CenterLongitude = value; RaisePropertyChanged(); NotifyVisualStateChanged(); PublishTrackSnapshot(); } }
     public double RadiusKilometers { get => _settings.DisplayRadiusKilometers; set { _settings.DisplayRadiusKilometers = value; RaisePropertyChanged(); NotifyVisualStateChanged(); PublishTrackSnapshot(); } }
@@ -136,6 +145,11 @@ public sealed class MainViewModel : ObservableObject
     public string MinSpeedText { get => _minSpeedText; set { if (SetProperty(ref _minSpeedText, value)) PublishTrackSnapshot(); } }
     public string MaxSpeedText { get => _maxSpeedText; set { if (SetProperty(ref _maxSpeedText, value)) PublishTrackSnapshot(); } }
     public string MaxDistanceText { get => _maxDistanceText; set { if (SetProperty(ref _maxDistanceText, value)) PublishTrackSnapshot(); } }
+    public string HistoryIcaoText { get => _historyIcaoText; set => SetProperty(ref _historyIcaoText, value); }
+    public string HistoryFromText { get => _historyFromText; set => SetProperty(ref _historyFromText, value); }
+    public string HistoryToText { get => _historyToText; set => SetProperty(ref _historyToText, value); }
+    public bool HistorySelectedOnly { get => _historySelectedOnly; set => SetProperty(ref _historySelectedOnly, value); }
+    public bool HistoryWithCoordinatesOnly { get => _historyWithCoordinatesOnly; set => SetProperty(ref _historyWithCoordinatesOnly, value); }
     public MapPackageInfo? CurrentMapPackage { get => _mapViewState.CurrentMapPackage; private set { if (!EqualityComparer<MapPackageInfo?>.Default.Equals(_mapViewState.CurrentMapPackage, value)) { _mapViewState.CurrentMapPackage = value; RaisePropertyChanged(); NotifyVisualStateChanged(); } } }
     public string? SelectedDeviceId { get => _settings.PreferredDeviceId; set { if (_settings.PreferredDeviceId != value) { _settings.PreferredDeviceId = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(SelectedDeviceSummary)); } } }
     public string SelectedDeviceSummary => string.IsNullOrWhiteSpace(_settings.PreferredDeviceId) ? "Предпочтительный RTL-SDR не выбран" : _availableDevices.FirstOrDefault(item => item.DeviceId == _settings.PreferredDeviceId) is { } device ? $"Выбрано устройство: {device.Name}" : "Сохранённый RTL-SDR сейчас не подключён";
@@ -157,6 +171,7 @@ public sealed class MainViewModel : ObservableObject
         await RefreshMapPackagesAsync();
         await RefreshDevicesAsync();
         await RefreshEnvironmentStatusAsync();
+        ApplyDecoderStatus(_decoderProcessService.CurrentStatus);
         UpdateCapabilitiesText();
         PublishTrackSnapshot();
         _uiRefreshTimer.Start();
@@ -280,7 +295,8 @@ public sealed class MainViewModel : ObservableObject
 
     public async Task ExportTracksAsync(string path)
     {
-        await _trackExportService.ExportAsync(path, SelectedTrack?.Icao, null, null, CancellationToken.None);
+        var filter = BuildHistoryFilter();
+        await _trackExportService.ExportAsync(path, filter.Icao, filter.FromUtc, filter.ToUtc, filter.WithCoordinatesOnly, CancellationToken.None);
         StatusText = $"CSV экспортирован: {path}";
         LogEvent($"CSV экспорт: {Path.GetFileName(path)}");
     }
@@ -288,7 +304,9 @@ public sealed class MainViewModel : ObservableObject
     public async Task StartPlaybackAsync()
     {
         await StopLiveAsync();
-        var tracks = await _storageService.GetStoredTracksAsync(DateTime.UtcNow.AddDays(-7), null, SelectedTrack?.Icao, CancellationToken.None);
+        var filter = BuildHistoryFilter();
+        var tracks = await _storageService.GetStoredTracksAsync(filter.FromUtc, filter.ToUtc, filter.Icao, CancellationToken.None);
+        if (filter.WithCoordinatesOnly) tracks = tracks.Where(track => track.Points.Count > 0).ToList();
         if (tracks.Count == 0) { StatusText = "Нет архивных треков для playback"; return; }
         _playbackCoordinator.Load(tracks, _settings.MaxTrailPoints);
         if (!_playbackCoordinator.HasFrames) { StatusText = "В истории нет точек с координатами для playback"; return; }
@@ -382,6 +400,7 @@ public sealed class MainViewModel : ObservableObject
         if (environment.DeviceDetected && !string.IsNullOrWhiteSpace(environment.DeviceName)) DeviceStatusText = $"RTL-SDR: {environment.DeviceName}";
         RaisePropertyChanged(nameof(SelectedDeviceSummary));
         UpdateCapabilitiesText(environment);
+        UpdateSourceSummary();
     }
 
     private async Task<bool> TryRunSimulationFallbackAsync(CancellationToken cancellationToken)
@@ -436,6 +455,7 @@ public sealed class MainViewModel : ObservableObject
             }
         }
         TrackMetricsText = $"Треки: {active} active / {stale} stale / {withPosition} with position";
+        SourceSummaryText = $"{_liveStatusState.LiveSourceText}; stale targets: {stale}; visible with position: {withPosition}";
     }
 
     private void UpdateCapabilitiesText(LiveEnvironmentStatus? environment = null)
@@ -455,10 +475,76 @@ public sealed class MainViewModel : ObservableObject
     private void ResetFilters() { SearchText = string.Empty; WithPositionOnly = false; AirborneOnly = false; ShowSelectedOnly = false; MinAltitudeText = string.Empty; MaxAltitudeText = string.Empty; MinSpeedText = string.Empty; MaxSpeedText = string.Empty; MaxDistanceText = string.Empty; StatusText = "Фильтры сброшены"; }
     private void LogEvent(string message) { _liveStatusState.LogEvent(message); RaisePropertyChanged(nameof(RecentEvents)); }
     private void NotifyVisualStateChanged() => VisualStateChanged?.Invoke(this, EventArgs.Empty);
+    private void ApplyDecoderStatus(DecoderProcessStatus status)
+    {
+        DecoderStatusText = TranslateDecoderStatus(status.Message);
+        DecoderFailureText = TranslateDecoderFailure(status);
+        UpdateSourceSummary(status);
+    }
+
+    private void UpdateSourceSummary(DecoderProcessStatus? status = null)
+    {
+        var currentStatus = status ?? _decoderProcessService.CurrentStatus;
+        var source = string.IsNullOrWhiteSpace(_liveStatusState.LiveSourceText) ? "Источник: idle" : _liveStatusState.LiveSourceText;
+        var state = currentStatus.State switch
+        {
+            DecoderProcessState.Ready => "decoder ready",
+            DecoderProcessState.Starting => "decoder starting",
+            DecoderProcessState.Disabled => "decoder disabled",
+            DecoderProcessState.Failed => "decoder failed",
+            _ => "decoder stopped"
+        };
+        SourceSummaryText = $"{source}; {state}; port {(currentStatus.PortReachable ? "reachable" : "not reachable")}";
+    }
+
+    private HistoryFilter BuildHistoryFilter()
+    {
+        var selectedIcao = HistorySelectedOnly ? SelectedTrack?.Icao : null;
+        var explicitIcao = string.IsNullOrWhiteSpace(HistoryIcaoText) ? null : HistoryIcaoText.Trim().ToUpperInvariant();
+        return new HistoryFilter(
+            selectedIcao ?? explicitIcao,
+            ParseHistoryDate(HistoryFromText, isEndBoundary: false),
+            ParseHistoryDate(HistoryToText, isEndBoundary: true),
+            HistoryWithCoordinatesOnly);
+    }
+
+    private static DateTime? ParseHistoryDate(string text, bool isEndBoundary)
+    {
+        if (string.IsNullOrWhiteSpace(text) || !DateTime.TryParse(text, out var parsed))
+        {
+            return null;
+        }
+
+        if (parsed.TimeOfDay == TimeSpan.Zero)
+        {
+            var localBoundary = isEndBoundary ? parsed.Date.AddDays(1).AddTicks(-1) : parsed.Date;
+            return DateTime.SpecifyKind(localBoundary, DateTimeKind.Local).ToUniversalTime();
+        }
+
+        return parsed.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(parsed, DateTimeKind.Local).ToUniversalTime()
+            : parsed.ToUniversalTime();
+    }
+
+    private static string TranslateDecoderFailure(DecoderProcessStatus status) => status.FailureReason switch
+    {
+        DecoderFailureReason.None when status.State == DecoderProcessState.Ready => "Decoder: backend готов и отвечает на порт",
+        DecoderFailureReason.None => "Decoder: явных ошибок нет",
+        DecoderFailureReason.AutoStartDisabled => "Decoder: автозапуск отключён в настройках",
+        DecoderFailureReason.BackendMissing => $"Decoder: bundled backend не найден{(string.IsNullOrWhiteSpace(status.ExecutablePath) ? string.Empty : $" ({status.ExecutablePath})")}",
+        DecoderFailureReason.PortBusy => "Decoder: SBS-1 порт уже занят другим процессом",
+        DecoderFailureReason.PortUnavailable => "Decoder: процесс стартовал, но SBS-1 порт не поднялся вовремя",
+        DecoderFailureReason.ProcessExitedEarly => $"Decoder: backend завершился до готовности порта. stderr: {status.LastErrorLine ?? "нет строки ошибки"}",
+        DecoderFailureReason.StartFailed => "Decoder: backend не удалось запустить",
+        _ => $"Decoder: {status.Message}"
+    };
+
     private static int? ParseNullableInt(string text) => int.TryParse(text, out var value) ? value : null;
     private static double? ParseNullableDouble(string text) => double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var invariant) ? invariant : double.TryParse(text, out var current) ? current : null;
     private static string TranslateDecoderStatus(string message) => message.Replace("dump1090: stopped", "Источник: остановлен", StringComparison.Ordinal).Replace("dump1090: starting bundled backend", "Источник: запуск bundled dump1090", StringComparison.Ordinal).Replace("dump1090: ready", "Источник: decoder готов", StringComparison.Ordinal).Replace("dump1090: emitted errors", "Источник: backend сообщает об ошибках", StringComparison.Ordinal).Replace("dump1090: running", "Источник: backend работает", StringComparison.Ordinal).Replace("dump1090 exited", "Источник: backend завершился", StringComparison.Ordinal).Replace("dump1090: auto-start disabled", "Источник: автозапуск отключён", StringComparison.Ordinal).Replace("dump1090: bundled backend missing", "Источник: bundled dump1090 не найден", StringComparison.Ordinal);
     private static Task InvokeOnUiAsync(Action action) { var dispatcher = Application.Current?.Dispatcher; if (dispatcher is null) { action(); return Task.CompletedTask; } return dispatcher.InvokeAsync(action).Task; }
+
+    private sealed record HistoryFilter(string? Icao, DateTime? FromUtc, DateTime? ToUtc, bool WithCoordinatesOnly);
 }
 
 

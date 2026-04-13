@@ -236,7 +236,7 @@ public sealed class MainViewModelTests : IDisposable
 
     private sealed class FakeDecoderProcessService : IDecoderProcessService
     {
-        public event EventHandler<DecoderProcessStatus>? StatusChanged;
+        public event EventHandler<DecoderProcessStatus>? StatusChanged { add { } remove { } }
         public bool IsRunning => false;
         public DecoderProcessStatus CurrentStatus { get; } = new(DecoderProcessState.Stopped, "dump1090: stopped");
         public Task<DecoderProcessStatus> StartAsync(ObservationSettings settings, CancellationToken cancellationToken) => Task.FromResult(CurrentStatus);
@@ -256,7 +256,7 @@ public sealed class MainViewModelTests : IDisposable
 
     private sealed class FakeTrackExportService : ITrackExportService
     {
-        public Task ExportAsync(string path, string? icao, DateTime? fromUtc, DateTime? toUtc, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task ExportAsync(string path, string? icao, DateTime? fromUtc, DateTime? toUtc, bool withCoordinatesOnly, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private sealed class FakeDecoderAdapter : IAdsbDecoderAdapter

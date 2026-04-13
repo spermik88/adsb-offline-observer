@@ -12,7 +12,9 @@ namespace AdsbObserver.App;
 
 public partial class MainWindow : Window
 {
+    private const int MaxCachedTiles = 512;
     private readonly Dictionary<string, BitmapImage> _tileCache = new(StringComparer.Ordinal);
+    private readonly Queue<string> _tileCacheOrder = new();
     private readonly MapOverlayRenderer _overlayRenderer = new();
     private CancellationTokenSource? _renderCts;
     private (double Width, double Height, int Zoom, double Lat, double Lon, string? Layer)? _lastBaseState;
@@ -63,10 +65,21 @@ public partial class MainWindow : Window
             return;
         }
 
-        var state = (BackgroundCanvas.ActualWidth, BackgroundCanvas.ActualHeight, vm.SelectedZoom, vm.CenterLatitude, vm.CenterLongitude, vm.CurrentMapPackage?.Id ?? vm.SelectedMapLayer.ToString());
+        var state = (
+            Width: BackgroundCanvas.ActualWidth,
+            Height: BackgroundCanvas.ActualHeight,
+            Zoom: vm.SelectedZoom,
+            Lat: vm.CenterLatitude,
+            Lon: vm.CenterLongitude,
+            Layer: vm.CurrentMapPackage?.Id ?? vm.SelectedMapLayer.ToString());
         if (_lastBaseState == state)
         {
             return;
+        }
+
+        if (_lastBaseState?.Layer != state.Layer)
+        {
+            ClearTileCache();
         }
 
         _lastBaseState = state;
@@ -159,6 +172,8 @@ public partial class MainWindow : Window
                 {
                     bitmap = CreateBitmap(bytes);
                     _tileCache[key] = bitmap;
+                    _tileCacheOrder.Enqueue(key);
+                    TrimTileCache();
                 }
 
                 var image = new Image { Width = 256, Height = 256, Source = bitmap };
@@ -190,5 +205,20 @@ public partial class MainWindow : Window
         bitmap.EndInit();
         bitmap.Freeze();
         return bitmap;
+    }
+
+    private void TrimTileCache()
+    {
+        while (_tileCache.Count > MaxCachedTiles && _tileCacheOrder.Count > 0)
+        {
+            var key = _tileCacheOrder.Dequeue();
+            _tileCache.Remove(key);
+        }
+    }
+
+    private void ClearTileCache()
+    {
+        _tileCache.Clear();
+        _tileCacheOrder.Clear();
     }
 }

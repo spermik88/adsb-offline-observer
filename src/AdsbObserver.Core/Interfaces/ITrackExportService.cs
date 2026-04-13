@@ -2,5 +2,5 @@ namespace AdsbObserver.Core.Interfaces;
 
 public interface ITrackExportService
 {
-    Task ExportAsync(string path, string? icao, DateTime? fromUtc, DateTime? toUtc, CancellationToken cancellationToken);
+    Task ExportAsync(string path, string? icao, DateTime? fromUtc, DateTime? toUtc, bool withCoordinatesOnly, CancellationToken cancellationToken);
 }

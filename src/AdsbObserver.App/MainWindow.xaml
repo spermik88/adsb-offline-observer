@@ -162,15 +162,35 @@
 
                     <Border Background="#14202A" BorderBrush="#243746" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,0,0,12">
                         <StackPanel>
+                            <TextBlock Text="History Scope" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,0,0,10" />
+                            <TextBlock Text="ICAO filter" Foreground="#AFC5D8" />
+                            <TextBox Text="{Binding HistoryIcaoText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" />
+                            <TextBlock Text="Period (local time)" Foreground="#AFC5D8" />
+                            <UniformGrid Columns="2" Margin="0,0,0,8">
+                                <TextBox Text="{Binding HistoryFromText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,8" ToolTip="From, for example 2026-04-10 or 2026-04-10 14:30" />
+                                <TextBox Text="{Binding HistoryToText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" ToolTip="To, for example 2026-04-13 or 2026-04-13 22:00" />
+                            </UniformGrid>
+                            <UniformGrid Columns="2" Margin="0,0,0,8">
+                                <CheckBox Content="Selected only" IsChecked="{Binding HistorySelectedOnly}" Foreground="#D6E4F0" Margin="0,0,0,8" />
+                                <CheckBox Content="Coordinates only" IsChecked="{Binding HistoryWithCoordinatesOnly}" Foreground="#D6E4F0" Margin="0,0,0,8" />
+                            </UniformGrid>
+                            <TextBlock Text="Эти фильтры применяются к Playback и Export CSV." Foreground="#8FB3C7" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="#14202A" BorderBrush="#243746" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,0,0,12">
+                        <StackPanel>
                             <TextBlock Text="Live Status" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,0,0,10" />
                             <TextBlock Text="{Binding ModeText}" Foreground="#D6E4F0" />
                             <TextBlock Text="Health" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,8,0,4" />
                             <TextBlock Text="{Binding LiveSourceText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding SourceSummaryText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding BackendReadinessText}" Foreground="#AFC5D8" />
                             <TextBlock Text="{Binding DriverReadinessText}" Foreground="#AFC5D8" />
                             <TextBlock Text="{Binding LiveReadinessText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding DeviceStatusText}" Foreground="#AFC5D8" Margin="0,8,0,0" />
                             <TextBlock Text="{Binding DecoderStatusText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding DecoderFailureText}" Foreground="#F0C879" TextWrapping="Wrap" />
                             <TextBlock Text="Metrics" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,8,0,4" />
                             <TextBlock Text="{Binding MessagesPerSecondText}" Foreground="#D6E4F0" Margin="0,8,0,0" />
                             <TextBlock Text="{Binding TrackMetricsText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
