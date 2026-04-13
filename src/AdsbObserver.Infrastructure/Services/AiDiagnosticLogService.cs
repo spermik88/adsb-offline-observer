@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -10,22 +9,22 @@ namespace AdsbObserver.Infrastructure.Services;
 
 public sealed class AiDiagnosticLogService : IAiDiagnosticLogService
 {
-    private const int FormatVersion = 1;
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true
-    };
-
+    private const int FormatVersion = 2;
+    private const int RecentKeyEventsLimit = 8;
+    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private readonly object _sync = new();
     private readonly JsonSerializerOptions _lineOptions = new(JsonOptions) { WriteIndented = false };
+    private readonly Dictionary<string, DateTime> _startedOperations = new(StringComparer.Ordinal);
     private bool _enabled;
     private bool _degraded;
+    private string? _degradedReason;
     private string? _sessionId;
     private string? _sessionPath;
     private string? _eventsPath;
     private string? _exceptionsPath;
     private string? _settingsPath;
     private string? _incidentSummaryPath;
+    private string? _sessionSummaryPath;
     private AiLogIncidentSummary? _summary;
 
     public Task StartSessionAsync(PortableWorkspacePaths workspace, ObservationSettings settings, CancellationToken cancellationToken)
@@ -36,10 +35,19 @@ public sealed class AiDiagnosticLogService : IAiDiagnosticLogService
             return Task.CompletedTask;
         }
 
+        lock (_sync)
+        {
+            if (_enabled && !_degraded && !string.IsNullOrWhiteSpace(_sessionPath))
+            {
+                return Task.CompletedTask;
+            }
+        }
+
         try
         {
             var aiLogsRoot = Path.Combine(workspace.LogsRoot, "logs_for_Ai");
             Directory.CreateDirectory(aiLogsRoot);
+            EnsureWritable(aiLogsRoot);
 
             var sessionId = $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..8]}";
             var sessionPath = Path.Combine(aiLogsRoot, sessionId);
@@ -76,6 +84,9 @@ public sealed class AiDiagnosticLogService : IAiDiagnosticLogService
                 sessionId,
                 DateTime.UtcNow,
                 null,
+                null,
+                null,
+                null,
                 0,
                 0,
                 0,
@@ -83,42 +94,42 @@ public sealed class AiDiagnosticLogService : IAiDiagnosticLogService
                 0,
                 null,
                 null,
+                Array.Empty<string>(),
                 environment.BackendLogPath);
 
             lock (_sync)
             {
                 _enabled = true;
                 _degraded = false;
+                _degradedReason = null;
                 _sessionId = sessionId;
                 _sessionPath = sessionPath;
                 _eventsPath = Path.Combine(sessionPath, "events.jsonl");
                 _exceptionsPath = Path.Combine(sessionPath, "exceptions.jsonl");
                 _settingsPath = Path.Combine(sessionPath, "settings.json");
                 _incidentSummaryPath = Path.Combine(sessionPath, "incident_summary.json");
+                _sessionSummaryPath = Path.Combine(sessionPath, "session_summary.json");
                 _summary = summary;
+                _startedOperations.Clear();
             }
 
             File.WriteAllText(Path.Combine(sessionPath, "manifest.json"), JsonSerializer.Serialize(manifest, JsonOptions), Encoding.UTF8);
             File.WriteAllText(Path.Combine(sessionPath, "environment.json"), JsonSerializer.Serialize(environment, JsonOptions), Encoding.UTF8);
-            File.WriteAllText(_settingsPath!, JsonSerializer.Serialize(settings, JsonOptions), Encoding.UTF8);
-            File.WriteAllText(_incidentSummaryPath!, JsonSerializer.Serialize(summary, JsonOptions), Encoding.UTF8);
+            File.WriteAllText(Path.Combine(sessionPath, "backend_log_reference.json"), JsonSerializer.Serialize(new { environment.BackendLogPath }, JsonOptions), Encoding.UTF8);
+            WriteSettingsSnapshot(settings);
+            PersistSummaries(summary);
 
-            return LogEventAsync("app.session", "info", "AiDiagnosticLogService", "AI diagnostics session started",
-                new { sessionPath, settings.AiLogsEnabled, environment.BackendLogPath }, cancellationToken: cancellationToken);
+            return LogEventAsync(AiLogEventTypes.AppSession, "app", AiLogSeverity.Info, nameof(AiDiagnosticLogService), "AI diagnostics session started",
+                new { sessionPath, settings.AiLogsEnabled, environment.BackendLogPath }, result: AiLogResults.Started, cancellationToken: cancellationToken);
         }
-        catch
+        catch (Exception ex)
         {
-            lock (_sync)
-            {
-                _enabled = false;
-                _degraded = true;
-            }
-
+            EnterDegradedMode($"start_session_failed:{ex.GetType().Name}");
             return Task.CompletedTask;
         }
     }
 
-    public Task LogEventAsync(string eventType, string severity, string component, string message, object? payload = null, string? actionId = null, string? operationId = null, CancellationToken cancellationToken = default)
+    public Task LogEventAsync(string eventType, string scope, string severity, string component, string message, object? payload = null, string? actionId = null, string? operationId = null, string? result = null, double? durationMs = null, string? errorCode = null, CancellationToken cancellationToken = default)
     {
         if (!_enabled || _degraded)
         {
@@ -141,22 +152,19 @@ public sealed class AiDiagnosticLogService : IAiDiagnosticLogService
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            var entry = new AiLogEvent(DateTime.UtcNow, sessionId, eventType, severity, component, actionId, operationId, message, payload);
+            var entry = new AiLogEvent(DateTime.UtcNow, sessionId, eventType, scope, severity, result, component, actionId, operationId, message, durationMs, errorCode, payload);
             AppendJsonLine(eventsPath, entry);
-            UpdateIncidentSummary(eventType, severity, message, null, actionId);
+            UpdateIncidentSummary(entry, null);
         }
-        catch
+        catch (Exception ex)
         {
-            lock (_sync)
-            {
-                _degraded = true;
-            }
+            EnterDegradedMode($"log_event_failed:{ex.GetType().Name}");
         }
 
         return Task.CompletedTask;
     }
 
-    public Task LogExceptionAsync(Exception exception, string component, string message, object? payload = null, string? actionId = null, string? operationId = null, CancellationToken cancellationToken = default)
+    public Task LogExceptionAsync(Exception exception, string component, string message, object? payload = null, string? actionId = null, string? operationId = null, string? errorCode = null, CancellationToken cancellationToken = default)
     {
         if (!_enabled || _degraded)
         {
@@ -167,6 +175,7 @@ public sealed class AiDiagnosticLogService : IAiDiagnosticLogService
         {
             string sessionId;
             string exceptionsPath;
+            string? eventsPath;
             lock (_sync)
             {
                 if (!_enabled || _degraded || _sessionId is null || _exceptionsPath is null)
@@ -176,39 +185,55 @@ public sealed class AiDiagnosticLogService : IAiDiagnosticLogService
 
                 sessionId = _sessionId;
                 exceptionsPath = _exceptionsPath;
+                eventsPath = _eventsPath;
             }
 
             cancellationToken.ThrowIfCancellationRequested();
             var exceptionPayload = new
             {
-                exception.GetType().FullName,
+                ExceptionType = exception.GetType().FullName,
                 exception.Message,
                 exception.StackTrace,
                 Payload = payload
             };
 
-            var entry = new AiLogEvent(DateTime.UtcNow, sessionId, "exception", "error", component, actionId, operationId, message, exceptionPayload);
+            var entry = new AiLogEvent(DateTime.UtcNow, sessionId, AiLogEventTypes.Exception, "runtime", AiLogSeverity.Error, AiLogResults.Failed, component, actionId, operationId, message, null, errorCode, exceptionPayload);
             AppendJsonLine(exceptionsPath, entry);
-            if (_eventsPath is not null)
+            if (!string.IsNullOrWhiteSpace(eventsPath))
             {
-                AppendJsonLine(_eventsPath, entry);
+                AppendJsonLine(eventsPath, entry);
             }
 
-            UpdateIncidentSummary("exception", "error", message, exception.Message, actionId);
+            UpdateIncidentSummary(entry, exception.Message);
         }
-        catch
+        catch (Exception ex)
         {
-            lock (_sync)
-            {
-                _degraded = true;
-            }
+            EnterDegradedMode($"log_exception_failed:{ex.GetType().Name}");
         }
 
         return Task.CompletedTask;
     }
 
+    public string BeginOperation(string eventType, string scope, string component, string message, object? payload = null, string? actionId = null)
+    {
+        var operationId = $"{eventType}-{Guid.NewGuid().ToString("N")[..8]}";
+        lock (_sync)
+        {
+            _startedOperations[operationId] = DateTime.UtcNow;
+        }
+
+        _ = LogEventAsync(eventType, scope, AiLogSeverity.Info, component, message, payload, actionId, operationId, AiLogResults.Started);
+        return operationId;
+    }
+
+    public Task CompleteOperationAsync(string eventType, string scope, string component, string operationId, string message, object? payload = null, string? actionId = null, double? durationMs = null, CancellationToken cancellationToken = default)
+        => LogEventAsync(eventType, scope, AiLogSeverity.Info, component, message, payload, actionId, operationId, AiLogResults.Succeeded, durationMs ?? EndOperation(operationId), cancellationToken: cancellationToken);
+
+    public Task FailOperationAsync(string eventType, string scope, string component, string operationId, string message, object? payload = null, string? actionId = null, string? errorCode = null, double? durationMs = null, CancellationToken cancellationToken = default)
+        => LogEventAsync(eventType, scope, AiLogSeverity.Error, component, message, payload, actionId, operationId, AiLogResults.Failed, durationMs ?? EndOperation(operationId), errorCode, cancellationToken);
+
     public Task MarkIncidentAsync(string message, object? payload = null, string? actionId = null, CancellationToken cancellationToken = default) =>
-        LogEventAsync("error", "warning", "AiDiagnosticLogService", message, new { incident = true, payload }, actionId, cancellationToken: cancellationToken);
+        LogEventAsync(AiLogEventTypes.Error, "incident", AiLogSeverity.Warning, nameof(AiDiagnosticLogService), message, new { incident = true, payload }, actionId, result: AiLogResults.Failed, cancellationToken: cancellationToken);
 
     public Task UpdateSettingsSnapshotAsync(ObservationSettings settings, CancellationToken cancellationToken)
     {
@@ -220,23 +245,11 @@ public sealed class AiDiagnosticLogService : IAiDiagnosticLogService
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            string? settingsPath;
-            lock (_sync)
-            {
-                settingsPath = _settingsPath;
-            }
-
-            if (!string.IsNullOrWhiteSpace(settingsPath))
-            {
-                File.WriteAllText(settingsPath, JsonSerializer.Serialize(settings, JsonOptions), Encoding.UTF8);
-            }
+            WriteSettingsSnapshot(settings);
         }
-        catch
+        catch (Exception ex)
         {
-            lock (_sync)
-            {
-                _degraded = true;
-            }
+            EnterDegradedMode($"settings_snapshot_failed:{ex.GetType().Name}");
         }
 
         return Task.CompletedTask;
@@ -245,6 +258,10 @@ public sealed class AiDiagnosticLogService : IAiDiagnosticLogService
     public Task FlushAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (_enabled && !_degraded)
+        {
+            _ = LogEventAsync(AiLogEventTypes.AppSession, "app", AiLogSeverity.Info, nameof(AiDiagnosticLogService), "AI diagnostics session completed", result: AiLogResults.Succeeded);
+        }
         return Task.CompletedTask;
     }
 
@@ -261,10 +278,11 @@ public sealed class AiDiagnosticLogService : IAiDiagnosticLogService
         lock (_sync)
         {
             _enabled = false;
+            _startedOperations.Clear();
         }
     }
 
-    private void UpdateIncidentSummary(string eventType, string severity, string message, string? exceptionMessage, string? actionId)
+    private void UpdateIncidentSummary(AiLogEvent entry, string? exceptionMessage)
     {
         lock (_sync)
         {
@@ -273,21 +291,103 @@ public sealed class AiDiagnosticLogService : IAiDiagnosticLogService
                 return;
             }
 
+            var recentKeyEvents = _summary.RecentKeyEvents.ToList();
+            if (entry.Result is AiLogResults.Failed or AiLogResults.Succeeded or AiLogResults.Started)
+            {
+                recentKeyEvents.Insert(0, $"{entry.EventType}:{entry.Result}:{entry.Message}");
+                while (recentKeyEvents.Count > RecentKeyEventsLimit)
+                {
+                    recentKeyEvents.RemoveAt(recentKeyEvents.Count - 1);
+                }
+            }
+
             var next = _summary with
             {
                 LastUpdatedUtc = DateTime.UtcNow,
-                LastActionId = actionId ?? _summary.LastActionId,
-                IncidentMarkers = _summary.IncidentMarkers + (message.Contains("incident", StringComparison.OrdinalIgnoreCase) || eventType == "error" && severity == "warning" ? 1 : 0),
-                ErrorCount = _summary.ErrorCount + ((severity.Equals("error", StringComparison.OrdinalIgnoreCase) || eventType == "error") ? 1 : 0),
-                ExceptionCount = _summary.ExceptionCount + (eventType == "exception" ? 1 : 0),
-                DecoderFailureCount = _summary.DecoderFailureCount + (eventType == "live.decoder" && severity.Equals("error", StringComparison.OrdinalIgnoreCase) ? 1 : 0),
-                SimulationFallbackCount = _summary.SimulationFallbackCount + (message.Contains("fallback", StringComparison.OrdinalIgnoreCase) ? 1 : 0),
-                LastErrorMessage = severity.Equals("error", StringComparison.OrdinalIgnoreCase) || eventType == "error" ? message : _summary.LastErrorMessage,
-                LastExceptionMessage = exceptionMessage ?? _summary.LastExceptionMessage
+                LastActionId = entry.ActionId ?? _summary.LastActionId,
+                LastOperationId = entry.OperationId ?? _summary.LastOperationId,
+                LastResult = entry.Result ?? _summary.LastResult,
+                LastDecoderFailureReason = entry.EventType == AiLogEventTypes.LiveDecoder && !string.IsNullOrWhiteSpace(entry.ErrorCode) ? entry.ErrorCode : _summary.LastDecoderFailureReason,
+                IncidentMarkers = _summary.IncidentMarkers + ((entry.EventType == AiLogEventTypes.Error && entry.Severity == AiLogSeverity.Warning) ? 1 : 0),
+                ErrorCount = _summary.ErrorCount + (entry.Severity == AiLogSeverity.Error ? 1 : 0),
+                ExceptionCount = _summary.ExceptionCount + (entry.EventType == AiLogEventTypes.Exception ? 1 : 0),
+                DecoderFailureCount = _summary.DecoderFailureCount + (entry.EventType == AiLogEventTypes.LiveDecoder && entry.Severity == AiLogSeverity.Error ? 1 : 0),
+                SimulationFallbackCount = _summary.SimulationFallbackCount + (entry.Message.Contains("fallback", StringComparison.OrdinalIgnoreCase) ? 1 : 0),
+                LastErrorMessage = entry.Severity == AiLogSeverity.Error ? entry.Message : _summary.LastErrorMessage,
+                LastExceptionMessage = exceptionMessage ?? _summary.LastExceptionMessage,
+                RecentKeyEvents = recentKeyEvents
             };
 
             _summary = next;
-            File.WriteAllText(_incidentSummaryPath, JsonSerializer.Serialize(next, JsonOptions), Encoding.UTF8);
+            PersistSummaries(next);
+        }
+    }
+
+    private void PersistSummaries(AiLogIncidentSummary summary)
+    {
+        if (_incidentSummaryPath is not null)
+        {
+            File.WriteAllText(_incidentSummaryPath, JsonSerializer.Serialize(summary, JsonOptions), Encoding.UTF8);
+        }
+
+        if (_sessionSummaryPath is not null)
+        {
+            var sessionSummary = new
+            {
+                summary.SessionId,
+                summary.ErrorCount,
+                summary.ExceptionCount,
+                summary.DecoderFailureCount,
+                summary.SimulationFallbackCount,
+                PlaybackRuns = summary.RecentKeyEvents.Count(item => item.StartsWith(AiLogEventTypes.Playback, StringComparison.Ordinal)),
+                ExportRuns = summary.RecentKeyEvents.Count(item => item.StartsWith(AiLogEventTypes.Export, StringComparison.Ordinal)),
+                MapRenders = summary.RecentKeyEvents.Count(item => item.StartsWith(AiLogEventTypes.MapRender, StringComparison.Ordinal)),
+                summary.RecentKeyEvents
+            };
+            File.WriteAllText(_sessionSummaryPath, JsonSerializer.Serialize(sessionSummary, JsonOptions), Encoding.UTF8);
+        }
+    }
+
+    private void WriteSettingsSnapshot(ObservationSettings settings)
+    {
+        string? settingsPath;
+        lock (_sync)
+        {
+            settingsPath = _settingsPath;
+        }
+
+        if (!string.IsNullOrWhiteSpace(settingsPath))
+        {
+            File.WriteAllText(settingsPath, JsonSerializer.Serialize(new { savedAtUtc = DateTime.UtcNow, settings }, JsonOptions), Encoding.UTF8);
+        }
+    }
+
+    private static void EnsureWritable(string directory)
+    {
+        var probePath = Path.Combine(directory, ".write-test.tmp");
+        File.WriteAllText(probePath, "ok");
+        File.Delete(probePath);
+    }
+
+    private double? EndOperation(string operationId)
+    {
+        lock (_sync)
+        {
+            if (_startedOperations.Remove(operationId, out var started))
+            {
+                return (DateTime.UtcNow - started).TotalMilliseconds;
+            }
+        }
+
+        return null;
+    }
+
+    private void EnterDegradedMode(string reason)
+    {
+        lock (_sync)
+        {
+            _degraded = true;
+            _degradedReason = reason;
         }
     }
 

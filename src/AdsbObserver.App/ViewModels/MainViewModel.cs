@@ -286,7 +286,7 @@ public sealed class MainViewModel : ObservableObject
                     PublishTrackSnapshot();
                     UpdateCapabilitiesText();
                 });
-                await _aiLogService.LogEventAsync("live.decoder", "info", nameof(MainViewModel), "Live loop stopped", new { mode = _liveStatusState.Mode.ToString() }, actionId, operationId);
+                await _aiLogService.LogEventAsync(AiLogEventTypes.LiveDecoder, "live", AiLogSeverity.Info, nameof(MainViewModel), "Live loop stopped", new { mode = _liveStatusState.Mode.ToString() }, actionId, operationId, AiLogResults.Succeeded);
                 await _decoderProcessService.StopAsync(CancellationToken.None);
                 await RefreshEnvironmentStatusAsync();
                 LogEvent("Live остановлен");
@@ -393,7 +393,7 @@ public sealed class MainViewModel : ObservableObject
     public async Task<byte[]?> GetTileBytesAsync(int zoom, int x, int y, CancellationToken cancellationToken) => CurrentMapPackage is null ? null : await _mapTileService.GetTileBytesAsync(CurrentMapPackage, zoom, x, y, cancellationToken);
     public async Task<LiveEnvironmentStatus> PrepareLiveEnvironmentAsync(CancellationToken cancellationToken = default) { StatusText = "Диагностика live-режима..."; var environment = await _driverBootstrapService.EnsureReadyAsync(_settings, cancellationToken); ApplyEnvironmentStatus(environment); StatusText = environment.Message; UpdateCapabilitiesText(); LogStructured("live.environment", environment.CanStartLive ? "info" : "warning", nameof(MainViewModel), "Live environment checked", new { environment.Issue, environment.Message, environment.Guidance }); return environment; }
     public bool ShouldDisplayLabel(TrackViewModel track) => track.IsSelected || (track.HasPosition && !track.IsStale && SelectedZoom >= 9);
-    public Task LogExternalEventAsync(string eventType, string severity, string component, string message, object? payload = null, string? actionId = null, string? operationId = null) => _aiLogService.LogEventAsync(eventType, severity, component, message, payload, actionId, operationId);
+    public Task LogExternalEventAsync(string eventType, string severity, string component, string message, object? payload = null, string? actionId = null, string? operationId = null) => _aiLogService.LogEventAsync(eventType, eventType.Split('.', 2, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "app", severity, component, message, payload, actionId, operationId);
 
     private async IAsyncEnumerable<AircraftMessage> ReadWithFallbackAsync(IAdsbDecoderAdapter preferredAdapter, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
@@ -570,8 +570,13 @@ public sealed class MainViewModel : ObservableObject
     private static double? ParseNullableDouble(string text) => double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var invariant) ? invariant : double.TryParse(text, out var current) ? current : null;
     private static string TranslateDecoderStatus(string message) => message.Replace("dump1090: stopped", "Источник: остановлен", StringComparison.Ordinal).Replace("dump1090: starting bundled backend", "Источник: запуск bundled dump1090", StringComparison.Ordinal).Replace("dump1090: ready", "Источник: decoder готов", StringComparison.Ordinal).Replace("dump1090: emitted errors", "Источник: backend сообщает об ошибках", StringComparison.Ordinal).Replace("dump1090: running", "Источник: backend работает", StringComparison.Ordinal).Replace("dump1090 exited", "Источник: backend завершился", StringComparison.Ordinal).Replace("dump1090: auto-start disabled", "Источник: автозапуск отключён", StringComparison.Ordinal).Replace("dump1090: bundled backend missing", "Источник: bundled dump1090 не найден", StringComparison.Ordinal);
     private static Task InvokeOnUiAsync(Action action) { var dispatcher = Application.Current?.Dispatcher; if (dispatcher is null) { action(); return Task.CompletedTask; } return dispatcher.InvokeAsync(action).Task; }
-    private string BeginAction(string name, object? payload = null) { var actionId = $"{name}-{Guid.NewGuid().ToString("N")[..8]}"; LogStructured("ui.command", "info", nameof(MainViewModel), $"{name} started", payload, actionId); return actionId; }
-    private void LogStructured(string eventType, string severity, string component, string message, object? payload = null, string? actionId = null, string? operationId = null) { _ = _aiLogService.LogEventAsync(eventType, severity, component, message, payload, actionId, operationId); }
+    private string BeginAction(string name, object? payload = null) { var actionId = $"{name}-{Guid.NewGuid().ToString("N")[..8]}"; LogStructured(AiLogEventTypes.UiCommand, "ui", AiLogSeverity.Info, nameof(MainViewModel), $"{name} started", payload, actionId, result: AiLogResults.Started); return actionId; }
+    private void LogStructured(string eventType, string severity, string component, string message, object? payload = null, string? actionId = null, string? operationId = null)
+    {
+        var scope = eventType.Split('.', 2, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "app";
+        _ = _aiLogService.LogEventAsync(eventType, scope, severity, component, message, payload, actionId, operationId);
+    }
+    private void LogStructured(string eventType, string scope, string severity, string component, string message, object? payload = null, string? actionId = null, string? operationId = null, string? result = null, double? durationMs = null, string? errorCode = null) { _ = _aiLogService.LogEventAsync(eventType, scope, severity, component, message, payload, actionId, operationId, result, durationMs, errorCode); }
     private void UpdateAiLogStatus() { CurrentAiLogSessionPath = _aiLogService.GetCurrentSessionPath() ?? string.Empty; AiLogsStatusText = AiLogsEnabled ? string.IsNullOrWhiteSpace(CurrentAiLogSessionPath) ? "AI logs: enabled, session unavailable" : $"AI logs: enabled ({CurrentAiLogSessionPath})" : "AI logs: disabled"; }
     private void OpenAiLogsFolder() { if (string.IsNullOrWhiteSpace(CurrentAiLogSessionPath)) return; Process.Start(new ProcessStartInfo { FileName = CurrentAiLogSessionPath, UseShellExecute = true }); LogStructured("ui.command", "info", nameof(MainViewModel), "Opened AI logs folder", new { CurrentAiLogSessionPath }); }
     private void CopyAiLogsPath() { if (string.IsNullOrWhiteSpace(CurrentAiLogSessionPath)) return; Clipboard.SetText(CurrentAiLogSessionPath); StatusText = "Путь к AI logs скопирован"; LogStructured("ui.command", "info", nameof(MainViewModel), "Copied AI logs path", new { CurrentAiLogSessionPath }); }

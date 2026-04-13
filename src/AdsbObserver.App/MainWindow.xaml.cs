@@ -6,12 +6,22 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using AdsbObserver.App.Rendering;
 using AdsbObserver.App.ViewModels;
+using AdsbObserver.Core.Models;
 using Microsoft.Win32;
 
 namespace AdsbObserver.App;
 
 public partial class MainWindow : Window
 {
+    private sealed class TileRenderStats
+    {
+        public int Requested { get; set; }
+        public int Loaded { get; set; }
+        public int Cached { get; set; }
+        public int Evicted { get; set; }
+        public int Missed { get; set; }
+    }
+
     private const int MaxCachedTiles = 512;
     private readonly Dictionary<string, BitmapImage> _tileCache = new(StringComparer.Ordinal);
     private readonly Queue<string> _tileCacheOrder = new();
@@ -88,7 +98,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        await ViewModel.LogExternalEventAsync("map.render", "info", nameof(MainWindow), "Base render started", new { state.Zoom, state.Lat, state.Lon, state.Layer });
+        var renderStartedUtc = DateTime.UtcNow;
+        await ViewModel.LogExternalEventAsync(AiLogEventTypes.MapRender, AiLogSeverity.Info, nameof(MainWindow), "Base render started", new { state.Zoom, state.Lat, state.Lon, state.Layer });
 
         if (_lastBaseState?.Layer != state.Layer)
         {
@@ -104,18 +115,21 @@ public partial class MainWindow : Window
         TileCanvas.Children.Clear();
         DrawFallbackBackground();
         DrawRangeRings();
+        var stats = new TileRenderStats();
         if (vm.CurrentMapPackage is not null)
         {
             try
             {
-                await DrawTilesAsync(cancellationToken);
+                await DrawTilesAsync(cancellationToken, stats);
             }
             catch (OperationCanceledException)
             {
             }
         }
 
-        await ViewModel.LogExternalEventAsync("map.render", "info", nameof(MainWindow), "Base render finished", new { state.Zoom, state.Layer, tiles = TileCanvas.Children.Count });
+        var durationMs = (DateTime.UtcNow - renderStartedUtc).TotalMilliseconds;
+        await ViewModel.LogExternalEventAsync(AiLogEventTypes.MapTiles, AiLogSeverity.Info, nameof(MainWindow), "Tile summary", new { stats.Requested, stats.Loaded, stats.Cached, stats.Evicted, stats.Missed, durationMs, state.Zoom, state.Layer });
+        await ViewModel.LogExternalEventAsync(AiLogEventTypes.MapRender, AiLogSeverity.Info, nameof(MainWindow), "Base render finished", new { state.Zoom, state.Layer, tiles = TileCanvas.Children.Count, durationMs });
     }
 
     private void DrawFallbackBackground()
@@ -159,7 +173,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task DrawTilesAsync(CancellationToken cancellationToken)
+    private async Task DrawTilesAsync(CancellationToken cancellationToken, TileRenderStats stats)
     {
         var viewport = new MapViewport(TileCanvas.ActualWidth, TileCanvas.ActualHeight, ViewModel.SelectedZoom, ViewModel.CenterLatitude, ViewModel.CenterLongitude);
         var fromTileX = (int)Math.Floor(viewport.TopLeftX / 256d);
@@ -176,9 +190,11 @@ public partial class MainWindow : Window
                     continue;
                 }
 
+                stats.Requested++;
                 var bytes = await ViewModel.GetTileBytesAsync(viewport.Zoom, tileX, tileY, cancellationToken);
                 if (bytes is null)
                 {
+                    stats.Missed++;
                     continue;
                 }
 
@@ -188,10 +204,11 @@ public partial class MainWindow : Window
                     bitmap = CreateBitmap(bytes);
                     _tileCache[key] = bitmap;
                     _tileCacheOrder.Enqueue(key);
-                    TrimTileCache();
-                    await ViewModel.LogExternalEventAsync("map.tiles", "info", nameof(MainWindow), "Tile cached", new { key, cacheSize = _tileCache.Count });
+                    stats.Cached++;
+                    TrimTileCache(stats);
                 }
 
+                stats.Loaded++;
                 var image = new Image { Width = 256, Height = 256, Source = bitmap };
                 Canvas.SetLeft(image, tileX * 256 - viewport.TopLeftX);
                 Canvas.SetTop(image, tileY * 256 - viewport.TopLeftY);
@@ -223,13 +240,13 @@ public partial class MainWindow : Window
         return bitmap;
     }
 
-    private void TrimTileCache()
+    private void TrimTileCache(TileRenderStats stats)
     {
         while (_tileCache.Count > MaxCachedTiles && _tileCacheOrder.Count > 0)
         {
             var key = _tileCacheOrder.Dequeue();
             _tileCache.Remove(key);
-            _ = ViewModel.LogExternalEventAsync("map.tiles", "info", nameof(MainWindow), "Tile evicted", new { key, cacheSize = _tileCache.Count });
+            stats.Evicted++;
         }
     }
 
@@ -237,6 +254,6 @@ public partial class MainWindow : Window
     {
         _tileCache.Clear();
         _tileCacheOrder.Clear();
-        _ = ViewModel.LogExternalEventAsync("map.tiles", "info", nameof(MainWindow), "Tile cache cleared");
+        _ = ViewModel.LogExternalEventAsync(AiLogEventTypes.MapTiles, AiLogSeverity.Info, nameof(MainWindow), "Tile cache cleared");
     }
 }
