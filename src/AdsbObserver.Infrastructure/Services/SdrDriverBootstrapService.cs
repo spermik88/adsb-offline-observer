@@ -114,7 +114,7 @@ public sealed class SdrDriverBootstrapService(IDeviceDetector deviceDetector) : 
             true,
             false,
             DriverBootstrapOutcome.NotNeeded,
-            "Live-окружение готово. Bundled backend можно запускать по требованию.",
+            "Live-окружение готово. Bundled dump1090 можно запускать по требованию.",
             "Нажмите Start Live, чтобы запустить bundled dump1090 и начать прием ADS-B.",
             selectedDevice.Name,
             selectedDevice.DriverName ?? selectedDevice.ServiceName);

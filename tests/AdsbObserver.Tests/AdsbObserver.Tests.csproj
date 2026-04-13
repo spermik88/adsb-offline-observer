@@ -1,10 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <UseWPF>true</UseWPF>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\AdsbObserver.App\AdsbObserver.App.csproj" />
     <ProjectReference Include="..\..\src\AdsbObserver.Core\AdsbObserver.Core.csproj" />
     <ProjectReference Include="..\..\src\AdsbObserver.Infrastructure\AdsbObserver.Infrastructure.csproj" />
   </ItemGroup>

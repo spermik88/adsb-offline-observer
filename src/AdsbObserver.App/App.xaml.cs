@@ -35,7 +35,7 @@ public partial class App : Application
             new RtlSdrDeviceDetector(),
             new Sbs1TcpDecoderAdapter(),
             new SimulatedDecoderAdapter(),
-            new DecoderProcessService(),
+            new DecoderProcessService(workspace),
             new SdrDriverBootstrapService(new RtlSdrDeviceDetector()),
             new CsvRecognitionImportService(storageService),
             new CsvTrackExportService(storageService),

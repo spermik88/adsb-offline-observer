@@ -1,12 +1,14 @@
 # Release Smoke Checklist
 
-1. Start from a clean Windows 10 VM with no RTL-SDR driver installed.
-2. Run the generated setup and confirm the app installs into `Program Files\AdsbObserver`.
-3. Launch the app and verify the first-run setup banner explains what is missing.
-4. Connect one RTL-SDR dongle and run `Prepare Live`.
-5. Accept the elevation prompt for the bundled Zadig helper and install the WinUSB driver for the RTL-SDR device.
-6. Re-run `Prepare Live` and confirm the app reports backend ready, driver ready, and live ready.
-7. Press `Start Live` and verify the bundled backend starts and the SBS-1 port becomes reachable.
-8. Stop live mode and confirm the backend process exits cleanly.
-9. Install a newer build over the previous one and confirm settings persist.
-10. Uninstall the app and confirm the install directory is removed.
+1. Start from a clean Windows machine with .NET Desktop Runtime installed.
+2. Extract `src/artifacts/release/win-x64/AdsbObserver-win-x64-portable.zip` into a new versioned folder.
+3. Confirm `portable.layout.json` points shared writable data outside the versioned app folder.
+4. Launch `AdsbObserver.App.exe` with no internet and no maps installed.
+5. Verify the UI text is readable in Russian and the setup banner explains what is available now.
+6. Verify startup works with no SDR attached and that playback/history remain available.
+7. Put one `.mbtiles` file into `maps/` and confirm the app detects it after `Сканировать карты`.
+8. Start the app with `backend/dump1090/dump1090.exe` removed and confirm live diagnostics report bundled backend missing without a crash.
+9. Connect one RTL-SDR dongle with a working driver and run `Проверить Live`.
+10. Press `Start Live` and verify bundled `dump1090` starts, opens port `30003`, and writes logs into `logs/`.
+11. Stop live mode and start it again; confirm no orphaned backend processes remain.
+12. Occupy port `30003` before launch and confirm the app reports an external SBS-1 source instead of starting a second backend.

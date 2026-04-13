@@ -302,7 +302,7 @@
                                         Command="{Binding SaveSettingsCommand}"
                                         Padding="12,6"
                                         Margin="0,0,8,0" />
-                                <Button Content="Prepare Live"
+                                <Button Content="Проверить Live"
                                         Command="{Binding PrepareLiveCommand}"
                                         Padding="12,6" />
                             </StackPanel>

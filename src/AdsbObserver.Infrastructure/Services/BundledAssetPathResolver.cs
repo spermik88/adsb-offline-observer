@@ -16,6 +16,12 @@ public static class BundledAssetPathResolver
             : Path.GetFullPath(settings.DecoderExecutablePath);
     }
 
+    public static string ResolveDecoderConfig(ObservationSettings settings) =>
+        ResolveAppRelativePath(settings.BundledDecoderConfigRelativePath);
+
+    public static string ResolveDecoderLog(ObservationSettings settings) =>
+        ResolveAppRelativePath(settings.BundledDecoderLogRelativePath);
+
     public static string ResolveDriverSetupScript(ObservationSettings settings) =>
         ResolveAppRelativePath(settings.BundledDriverSetupRelativePath);
 

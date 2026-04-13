@@ -4,13 +4,17 @@ using AdsbObserver.Core.Models;
 
 namespace AdsbObserver.Infrastructure.Services;
 
-public static class ReadsbArgumentBuilder
+public static class Dump1090ArgumentBuilder
 {
-    public static string Build(ObservationSettings settings)
+    public static string Build(ObservationSettings settings, string configPath)
     {
         var builder = new StringBuilder();
         AppendFlag(builder, "--net");
+        Append(builder, "--config", configPath);
         Append(builder, "--samplerate", settings.SampleRate.ToString(CultureInfo.InvariantCulture));
+        Append(builder, "--gain", settings.Gain.ToString(CultureInfo.InvariantCulture));
+        Append(builder, "--rtlsdr-ppm", settings.PpmCorrection.ToString(CultureInfo.InvariantCulture));
+        Append(builder, "--net-sbs-port", settings.DecoderPort.ToString(CultureInfo.InvariantCulture));
 
         if (!string.IsNullOrWhiteSpace(settings.PreferredDeviceId))
         {

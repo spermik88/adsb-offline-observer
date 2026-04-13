@@ -1,3 +1,4 @@
+using System.IO;
 using AdsbObserver.Core.Models;
 using AdsbObserver.Infrastructure.Repositories;
 using Xunit;

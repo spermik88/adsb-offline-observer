@@ -33,21 +33,21 @@ public sealed class MainViewModel : ObservableObject
     private CancellationTokenSource? _liveCts;
     private ObservationSettings _settings = new();
     private TrackViewModel? _selectedTrack;
-    private string _statusText = "Инициализация portable-окружения...";
-    private string _deviceStatusText = "Проверка RTL-SDR...";
+    private string _statusText = "Подготовка portable-окружения...";
+    private string _deviceStatusText = "RTL-SDR: проверка...";
     private string _modeText = "Режим: ожидание";
-    private string _recognitionStatusText = "База распознавания: не загружена";
-    private string _decoderStatusText = "Backend: не запущен";
-    private string _backendReadinessText = "Bundled backend: проверка...";
-    private string _driverReadinessText = "Драйвер RTL-SDR: проверка...";
-    private string _liveReadinessText = "Live-режим: проверка...";
-    private string _setupHeadlineText = "Portable first-run";
-    private string _setupGuidanceText = "Приложение готовит portable-папки и проверяет, какие режимы доступны.";
+    private string _recognitionStatusText = "Распознавание: база не загружена";
+    private string _decoderStatusText = "Источник live: не запущен";
+    private string _backendReadinessText = "Готовность backend: проверка...";
+    private string _driverReadinessText = "Готовность драйвера RTL-SDR: проверка...";
+    private string _liveReadinessText = "Готовность live: проверка...";
+    private string _setupHeadlineText = "Portable-версия готовит рабочие папки";
+    private string _setupGuidanceText = "Приложение проверяет, что уже доступно сейчас: live, playback, карты и история.";
     private string _liveSourceText = "Источник live: bundled dump1090";
     private string _mapStatusText = "Карты: не найдены";
     private string _portableStatusText = "Portable storage: проверка...";
     private string _workspaceStatusText = string.Empty;
-    private string _capabilitiesText = "Доступно: анализ";
+    private string _capabilitiesText = "Что доступно сейчас: анализ истории";
     private bool _isSetupBlocking;
     private bool _isLiveRunning;
     private bool _isPlaybackMode;
@@ -86,7 +86,16 @@ public sealed class MainViewModel : ObservableObject
 
         _decoderProcessService.StatusChanged += (_, status) =>
         {
-            _ = Application.Current.Dispatcher.InvokeAsync(() => { DecoderStatusText = TranslateDecoderStatus(status.Message); });
+            var translated = TranslateDecoderStatus(status.Message);
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher is null)
+            {
+                DecoderStatusText = translated;
+            }
+            else
+            {
+                _ = dispatcher.InvokeAsync(() => DecoderStatusText = translated);
+            }
         };
 
         StartLiveCommand = new RelayCommand(() => _ = StartLiveAsync(), () => !_isLiveRunning);
@@ -152,6 +161,7 @@ public sealed class MainViewModel : ObservableObject
             }
         }
     }
+
     public MapPackageInfo? CurrentMapPackage { get => _currentMapPackage; private set { if (SetProperty(ref _currentMapPackage, value)) { NotifyVisualStateChanged(); } } }
     public bool IsPlaybackMode => _isPlaybackMode;
 
@@ -212,10 +222,10 @@ public sealed class MainViewModel : ObservableObject
         RaisePropertyChanged(nameof(SelectedDeviceSummary));
 
         PortableStatusText = $"Portable storage: {_storageCompatibility.Message}";
-        WorkspaceStatusText = $"Папки: data={_workspace.DataRoot}, maps={_workspace.MapsRoot}, recordings={_workspace.RecordingsRoot}";
+        WorkspaceStatusText = $"Папки: data={_workspace.DataRoot}, maps={_workspace.MapsRoot}, recordings={_workspace.RecordingsRoot}, logs={_workspace.LogsRoot}";
 
         _recognitionLookup = await _storageService.GetRecognitionLookupAsync(CancellationToken.None);
-        RecognitionStatusText = $"База распознавания: {_recognitionLookup.Count} записей";
+        RecognitionStatusText = $"Распознавание: {_recognitionLookup.Count} записей";
 
         await RefreshMapPackagesAsync();
         await RefreshDevicesAsync();
@@ -257,8 +267,8 @@ public sealed class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            DeviceStatusText = $"Ошибка проверки RTL-SDR: {ex.Message}";
-            LiveReadinessText = "Live-режим: недоступен";
+            DeviceStatusText = $"RTL-SDR: ошибка проверки ({ex.Message})";
+            LiveReadinessText = "Готовность live: недоступен";
             UpdateCapabilitiesText();
         }
     }
@@ -289,7 +299,7 @@ public sealed class MainViewModel : ObservableObject
         if (!decoderStatus.IsReady)
         {
             StatusText = decoderStatus.FailureReason == DecoderFailureReason.PortUnavailable
-                ? $"{TranslateDecoderStatus(decoderStatus.Message)} Проверьте порт и bundled backend."
+                ? $"{TranslateDecoderStatus(decoderStatus.Message)} Проверьте порт и bundled dump1090."
                 : TranslateDecoderStatus(decoderStatus.Message);
             await RefreshEnvironmentStatusAsync();
             _liveCts.Dispose();
@@ -308,7 +318,7 @@ public sealed class MainViewModel : ObservableObject
         {
             try
             {
-                await Application.Current.Dispatcher.InvokeAsync(() =>
+                await InvokeOnUiAsync(() =>
                 {
                     StatusText = "Live-прием работает через bundled dump1090";
                 });
@@ -325,7 +335,7 @@ public sealed class MainViewModel : ObservableObject
                         await _storageService.AppendTrackPointAsync(track.Icao, track.Points[^1], _liveCts.Token);
                     }
 
-                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    await InvokeOnUiAsync(() =>
                     {
                         RefreshTrackCollection(_trackerService.GetActiveTracks(DateTime.UtcNow, TimeSpan.FromMinutes(_settings.ActiveTargetTimeoutMinutes)));
                     });
@@ -344,7 +354,7 @@ public sealed class MainViewModel : ObservableObject
 
                 if (!fallbackUsed)
                 {
-                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    await InvokeOnUiAsync(() =>
                     {
                         StatusText = $"Ошибка live-приема: {ex.Message}";
                     });
@@ -352,7 +362,7 @@ public sealed class MainViewModel : ObservableObject
             }
             finally
             {
-                await Application.Current.Dispatcher.InvokeAsync(() =>
+                await InvokeOnUiAsync(() =>
                 {
                     _isLiveRunning = false;
                     StartLiveCommand.RaiseCanExecuteChanged();
@@ -387,7 +397,7 @@ public sealed class MainViewModel : ObservableObject
     {
         var imported = await _recognitionImportService.ImportAsync(path, CancellationToken.None);
         _recognitionLookup = await _storageService.GetRecognitionLookupAsync(CancellationToken.None);
-        RecognitionStatusText = $"База распознавания: {_recognitionLookup.Count} записей";
+        RecognitionStatusText = $"Распознавание: {_recognitionLookup.Count} записей";
         StatusText = $"Импортировано записей: {imported}";
         return imported;
     }
@@ -515,9 +525,9 @@ public sealed class MainViewModel : ObservableObject
             yield break;
         }
 
-        await Application.Current.Dispatcher.InvokeAsync(() =>
+        await InvokeOnUiAsync(() =>
         {
-            StatusText = "Основной live-backend недоступен, включен simulation fallback";
+            StatusText = "Основной источник live недоступен, включен simulation fallback";
         });
 
         await foreach (var message in _simulationDecoder.ReadMessagesAsync(_settings, cancellationToken))
@@ -565,7 +575,7 @@ public sealed class MainViewModel : ObservableObject
 
     private async Task<LiveEnvironmentStatus> PrepareLiveEnvironmentAsync(CancellationToken cancellationToken = default)
     {
-        StatusText = "Проверка live-окружения...";
+        StatusText = "Диагностика live-режима...";
         var environment = await _driverBootstrapService.EnsureReadyAsync(_settings, cancellationToken);
         ApplyEnvironmentStatus(environment);
         StatusText = environment.Message;
@@ -581,18 +591,18 @@ public sealed class MainViewModel : ObservableObject
 
     private void ApplyEnvironmentStatus(LiveEnvironmentStatus environment)
     {
-        BackendReadinessText = $"Bundled backend: {(environment.BackendAvailable ? "готов" : "не найден")}";
-        DriverReadinessText = $"Драйвер RTL-SDR: {(environment.DriverInstalled ? "готов" : "не готов")}";
-        LiveReadinessText = $"Live-режим: {(environment.CanStartLive ? "доступен" : "недоступен")} ({environment.Message})";
+        BackendReadinessText = $"Готовность backend: {(environment.BackendAvailable ? "готов" : "не найден")}";
+        DriverReadinessText = $"Готовность драйвера RTL-SDR: {(environment.DriverInstalled ? "готов" : "не готов")}";
+        LiveReadinessText = $"Готовность live: {(environment.CanStartLive ? "доступен" : "недоступен")} ({environment.Message})";
         SetupHeadlineText = environment.Issue switch
         {
             LiveEnvironmentIssue.None => "Portable-окружение готово",
             LiveEnvironmentIssue.NoCompatibleDevice => "RTL-SDR не обнаружен",
             LiveEnvironmentIssue.MultipleDevicesDetected => "Выберите одно устройство RTL-SDR",
-            LiveEnvironmentIssue.DriverMissing => "Донгл требует внешней подготовки",
-            LiveEnvironmentIssue.BackendMissing => "Bundled backend отсутствует",
+            LiveEnvironmentIssue.DriverMissing => "RTL-SDR требует внешней подготовки",
+            LiveEnvironmentIssue.BackendMissing => "Bundled dump1090 отсутствует",
             LiveEnvironmentIssue.PortBusy => "SBS-1 поток уже доступен",
-            _ => "Live-окружение требует внимания"
+            _ => "Live-режим требует внимания"
         };
         SetupGuidanceText = environment.Guidance ?? environment.Message;
         LiveSourceText = environment.Issue == LiveEnvironmentIssue.PortBusy
@@ -612,9 +622,9 @@ public sealed class MainViewModel : ObservableObject
     {
         try
         {
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            await InvokeOnUiAsync(() =>
             {
-                StatusText = "Основной live-backend завершился, включен simulation fallback";
+                StatusText = "Основной источник live завершился, включен simulation fallback";
                 ModeText = "Режим: simulation fallback";
             });
 
@@ -630,7 +640,7 @@ public sealed class MainViewModel : ObservableObject
                     await _storageService.AppendTrackPointAsync(track.Icao, track.Points[^1], cancellationToken);
                 }
 
-                await Application.Current.Dispatcher.InvokeAsync(() =>
+                await InvokeOnUiAsync(() =>
                 {
                     RefreshTrackCollection(_trackerService.GetActiveTracks(DateTime.UtcNow, TimeSpan.FromMinutes(_settings.ActiveTargetTimeoutMinutes)));
                 });
@@ -646,27 +656,40 @@ public sealed class MainViewModel : ObservableObject
 
     private void UpdateCapabilitiesText(LiveEnvironmentStatus? environment = null)
     {
-        var liveReady = environment?.CanStartLive ?? LiveReadinessText.Contains("доступен", StringComparison.OrdinalIgnoreCase);
-        var capabilities = new List<string>();
+        var liveReady = environment?.CanStartLive ?? LiveReadinessText.Contains("Готовность live: доступен", StringComparison.OrdinalIgnoreCase);
+        var capabilities = new List<string>
+        {
+            liveReady ? "live" : "live недоступен",
+            "playback",
+            "история",
+            CurrentMapPackage is null ? "карты отсутствуют" : "карты"
+        };
 
-        capabilities.Add(liveReady ? "live" : "live недоступен");
-        capabilities.Add("playback");
-        capabilities.Add("история");
-        capabilities.Add(CurrentMapPackage is null ? "карты отсутствуют" : "карты");
-
-        CapabilitiesText = $"Доступно сейчас: {string.Join(", ", capabilities)}";
+        CapabilitiesText = $"Что доступно сейчас: {string.Join(", ", capabilities)}";
     }
 
     private static string TranslateDecoderStatus(string message)
     {
         return message
-            .Replace("Decoder process: stopped", "Backend: остановлен", StringComparison.Ordinal)
-            .Replace("Decoder process: starting bundled readsb", "Backend: запуск bundled dump1090", StringComparison.Ordinal)
-            .Replace("Decoder process: ready", "Backend: готов", StringComparison.Ordinal)
-            .Replace("Decoder process: emitted errors", "Backend: сообщает об ошибках", StringComparison.Ordinal)
-            .Replace("Decoder process: running", "Backend: работает", StringComparison.Ordinal)
-            .Replace("Decoder process exited", "Backend завершился", StringComparison.Ordinal)
-            .Replace("Decoder process: auto-start disabled", "Backend: автозапуск отключен", StringComparison.Ordinal)
-            .Replace("Decoder process: bundled backend missing", "Backend: bundled executable не найден", StringComparison.Ordinal);
+            .Replace("dump1090: stopped", "Источник live: остановлен", StringComparison.Ordinal)
+            .Replace("dump1090: starting bundled backend", "Источник live: запуск bundled dump1090", StringComparison.Ordinal)
+            .Replace("dump1090: ready", "Источник live: готов", StringComparison.Ordinal)
+            .Replace("dump1090: emitted errors", "Источник live: backend сообщает об ошибках", StringComparison.Ordinal)
+            .Replace("dump1090: running", "Источник live: работает", StringComparison.Ordinal)
+            .Replace("dump1090 exited", "Источник live: backend завершился", StringComparison.Ordinal)
+            .Replace("dump1090: auto-start disabled", "Источник live: автозапуск отключен", StringComparison.Ordinal)
+            .Replace("dump1090: bundled backend missing", "Источник live: bundled dump1090 не найден", StringComparison.Ordinal);
+    }
+
+    private static Task InvokeOnUiAsync(Action action)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            action();
+            return Task.CompletedTask;
+        }
+
+        return dispatcher.InvokeAsync(action).Task;
     }
 }
