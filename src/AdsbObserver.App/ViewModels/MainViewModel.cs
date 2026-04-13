@@ -20,30 +20,20 @@ public sealed class MainViewModel : ObservableObject
     private readonly ITrackExportService _trackExportService;
     private readonly IMapTileService _mapTileService;
     private readonly AircraftTrackerService _trackerService;
-    private readonly PlaybackService _playbackService;
+    private readonly PlaybackCoordinator _playbackCoordinator;
     private readonly PortableWorkspacePaths _workspace;
     private readonly StorageCompatibilityStatus _storageCompatibility;
     private readonly DispatcherTimer _playbackTimer = new() { Interval = TimeSpan.FromMilliseconds(350) };
     private readonly DispatcherTimer _uiRefreshTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
-    private readonly ObservableCollection<TrackViewModel> _tracks = [];
+    private readonly TrackListState _trackListState = new();
     private readonly ObservableCollection<SdrDeviceInfo> _availableDevices = [];
-    private readonly ObservableCollection<string> _recentEvents = [];
+    private readonly LiveStatusState _liveStatusState = new();
+    private readonly MapViewState _mapViewState = new();
     private readonly object _trackerLock = new();
     private IReadOnlyDictionary<string, AircraftRecognitionRecord> _recognitionLookup = new Dictionary<string, AircraftRecognitionRecord>(StringComparer.OrdinalIgnoreCase);
-    private IReadOnlyList<PlaybackFrame> _playbackFrames = [];
     private ObservationSettings _settings = new();
     private CancellationTokenSource? _liveCts;
-    private TrackViewModel? _selectedTrack;
-    private MapPackageInfo? _currentMapPackage;
-    private int _playbackIndex;
-    private int _selectedZoom = 8;
-    private int _messageCounter;
-    private DateTime _metricsStartUtc = DateTime.UtcNow;
-    private double _homeCenterLatitude;
-    private double _homeCenterLongitude;
-    private string _statusText = "Подготовка окружения...";
     private string _deviceStatusText = "RTL-SDR: проверка...";
-    private string _modeText = "Режим: idle";
     private string _recognitionStatusText = "Распознавание: база не загружена";
     private string _decoderStatusText = "Источник: decoder не запущен";
     private string _backendReadinessText = "Backend: проверка...";
@@ -51,7 +41,6 @@ public sealed class MainViewModel : ObservableObject
     private string _liveReadinessText = "Live: проверка...";
     private string _setupHeadlineText = "Проверка portable-окружения";
     private string _setupGuidanceText = "Приложение проверяет live, playback, карты и историю.";
-    private string _liveSourceText = "Источник: bundled dump1090";
     private string _mapStatusText = "Карты: не найдены";
     private string _portableStatusText = "Portable storage: проверка...";
     private string _workspaceStatusText = string.Empty;
@@ -62,19 +51,17 @@ public sealed class MainViewModel : ObservableObject
     private string _minSpeedText = string.Empty;
     private string _maxSpeedText = string.Empty;
     private string _maxDistanceText = string.Empty;
-    private string _messagesPerSecondText = "Messages/sec: 0";
     private string _trackMetricsText = "Треки: 0 active / 0 stale / 0 with position";
     private bool _isLiveRunning;
     private bool _isPlaybackMode;
     private bool _withPositionOnly;
     private bool _airborneOnly;
     private bool _showSelectedOnly;
-    private MapLayerType _selectedMapLayer = MapLayerType.Osm;
     private TrackSortMode _selectedSortMode = TrackSortMode.LastSeen;
 
     public MainViewModel(IStorageService storageService, IDeviceDetector deviceDetector, IAdsbDecoderAdapter liveDecoder, IAdsbDecoderAdapter simulationDecoder, IDecoderProcessService decoderProcessService, ISdrDriverBootstrapService driverBootstrapService, IRecognitionImportService recognitionImportService, ITrackExportService trackExportService, IMapTileService mapTileService, AircraftTrackerService trackerService, PlaybackService playbackService, PortableWorkspacePaths workspace, StorageCompatibilityStatus storageCompatibility)
     {
-        _storageService = storageService; _deviceDetector = deviceDetector; _liveDecoder = liveDecoder; _simulationDecoder = simulationDecoder; _decoderProcessService = decoderProcessService; _driverBootstrapService = driverBootstrapService; _recognitionImportService = recognitionImportService; _trackExportService = trackExportService; _mapTileService = mapTileService; _trackerService = trackerService; _playbackService = playbackService; _workspace = workspace; _storageCompatibility = storageCompatibility;
+        _storageService = storageService; _deviceDetector = deviceDetector; _liveDecoder = liveDecoder; _simulationDecoder = simulationDecoder; _decoderProcessService = decoderProcessService; _driverBootstrapService = driverBootstrapService; _recognitionImportService = recognitionImportService; _trackExportService = trackExportService; _mapTileService = mapTileService; _trackerService = trackerService; _playbackCoordinator = new PlaybackCoordinator(playbackService); _workspace = workspace; _storageCompatibility = storageCompatibility;
         _decoderProcessService.StatusChanged += (_, status) => _ = InvokeOnUiAsync(() => DecoderStatusText = TranslateDecoderStatus(status.Message));
         StartLiveCommand = new RelayCommand(() => _ = StartLiveAsync(), () => !_isLiveRunning);
         StopLiveCommand = new RelayCommand(() => _ = StopLiveAsync(), () => _isLiveRunning);
@@ -87,14 +74,15 @@ public sealed class MainViewModel : ObservableObject
         CenterOnSelectedCommand = new RelayCommand(CenterOnSelectedTrack, () => SelectedTrack?.HasPosition == true);
         ResetCenterCommand = new RelayCommand(ResetCenterToObservationPoint);
         ToggleSelectedOnlyCommand = new RelayCommand(() => ShowSelectedOnly = !ShowSelectedOnly);
+        ResetFiltersCommand = new RelayCommand(ResetFilters);
         _playbackTimer.Tick += (_, _) => AdvancePlayback();
         _uiRefreshTimer.Tick += (_, _) => PublishTrackSnapshot();
     }
 
     public event EventHandler? VisualStateChanged;
-    public ObservableCollection<TrackViewModel> Tracks => _tracks;
+    public ObservableCollection<TrackViewModel> Tracks => _trackListState.Tracks;
     public ObservableCollection<SdrDeviceInfo> AvailableDevices => _availableDevices;
-    public ObservableCollection<string> RecentEvents => _recentEvents;
+    public ObservableCollection<string> RecentEvents => _liveStatusState.RecentEvents;
     public Array SortModes => Enum.GetValues(typeof(TrackSortMode));
     public RelayCommand StartLiveCommand { get; }
     public RelayCommand StopLiveCommand { get; }
@@ -107,9 +95,10 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand CenterOnSelectedCommand { get; }
     public RelayCommand ResetCenterCommand { get; }
     public RelayCommand ToggleSelectedOnlyCommand { get; }
-    public string StatusText { get => _statusText; private set => SetProperty(ref _statusText, value); }
+    public RelayCommand ResetFiltersCommand { get; }
+    public string StatusText { get => _liveStatusState.StatusText; private set { _liveStatusState.SetStatus(value); RaisePropertyChanged(); } }
     public string DeviceStatusText { get => _deviceStatusText; private set => SetProperty(ref _deviceStatusText, value); }
-    public string ModeText { get => _modeText; private set => SetProperty(ref _modeText, value); }
+    public string ModeText { get => LiveStatusState.FormatMode(_liveStatusState.Mode); private set { } }
     public string RecognitionStatusText { get => _recognitionStatusText; private set => SetProperty(ref _recognitionStatusText, value); }
     public string DecoderStatusText { get => _decoderStatusText; private set => SetProperty(ref _decoderStatusText, value); }
     public string BackendReadinessText { get => _backendReadinessText; private set => SetProperty(ref _backendReadinessText, value); }
@@ -117,12 +106,12 @@ public sealed class MainViewModel : ObservableObject
     public string LiveReadinessText { get => _liveReadinessText; private set => SetProperty(ref _liveReadinessText, value); }
     public string SetupHeadlineText { get => _setupHeadlineText; private set => SetProperty(ref _setupHeadlineText, value); }
     public string SetupGuidanceText { get => _setupGuidanceText; private set => SetProperty(ref _setupGuidanceText, value); }
-    public string LiveSourceText { get => _liveSourceText; private set => SetProperty(ref _liveSourceText, value); }
+    public string LiveSourceText { get => _liveStatusState.LiveSourceText; private set { _liveStatusState.SetSource(value); RaisePropertyChanged(); } }
     public string MapStatusText { get => _mapStatusText; private set => SetProperty(ref _mapStatusText, value); }
     public string PortableStatusText { get => _portableStatusText; private set => SetProperty(ref _portableStatusText, value); }
     public string WorkspaceStatusText { get => _workspaceStatusText; private set => SetProperty(ref _workspaceStatusText, value); }
     public string CapabilitiesText { get => _capabilitiesText; private set => SetProperty(ref _capabilitiesText, value); }
-    public string MessagesPerSecondText { get => _messagesPerSecondText; private set => SetProperty(ref _messagesPerSecondText, value); }
+    public string MessagesPerSecondText => _liveStatusState.MessagesPerSecondText;
     public string TrackMetricsText { get => _trackMetricsText; private set => SetProperty(ref _trackMetricsText, value); }
     public double CenterLatitude { get => _settings.CenterLatitude; set { _settings.CenterLatitude = value; RaisePropertyChanged(); NotifyVisualStateChanged(); PublishTrackSnapshot(); } }
     public double CenterLongitude { get => _settings.CenterLongitude; set { _settings.CenterLongitude = value; RaisePropertyChanged(); NotifyVisualStateChanged(); PublishTrackSnapshot(); } }
@@ -133,10 +122,10 @@ public sealed class MainViewModel : ObservableObject
     public string DecoderHost { get => _settings.DecoderHost; set { _settings.DecoderHost = value; RaisePropertyChanged(); } }
     public int DecoderPort { get => _settings.DecoderPort; set { _settings.DecoderPort = value; RaisePropertyChanged(); } }
     public bool UseSimulationFallback { get => _settings.UseSimulationFallback; set { _settings.UseSimulationFallback = value; RaisePropertyChanged(); } }
-    public int ActiveTrackCount => _tracks.Count(track => !track.IsStale);
+    public int ActiveTrackCount => Tracks.Count(track => !track.IsStale);
     public bool IsPlaybackMode => _isPlaybackMode;
-    public int SelectedZoom { get => _selectedZoom; set { if (SetProperty(ref _selectedZoom, value)) NotifyVisualStateChanged(); } }
-    public MapLayerType SelectedMapLayer { get => _selectedMapLayer; set { if (SetProperty(ref _selectedMapLayer, value)) _ = RefreshMapPackagesAsync(); } }
+    public int SelectedZoom { get => _mapViewState.SelectedZoom; set { if (_mapViewState.SelectedZoom != value) { _mapViewState.SelectedZoom = value; RaisePropertyChanged(); NotifyVisualStateChanged(); } } }
+    public MapLayerType SelectedMapLayer { get => _mapViewState.SelectedMapLayer; set { if (_mapViewState.SelectedMapLayer != value) { _mapViewState.SelectedMapLayer = value; RaisePropertyChanged(); _ = RefreshMapPackagesAsync(); } } }
     public TrackSortMode SelectedSortMode { get => _selectedSortMode; set { if (SetProperty(ref _selectedSortMode, value)) PublishTrackSnapshot(); } }
     public string SearchText { get => _searchText; set { if (SetProperty(ref _searchText, value)) PublishTrackSnapshot(); } }
     public bool WithPositionOnly { get => _withPositionOnly; set { if (SetProperty(ref _withPositionOnly, value)) PublishTrackSnapshot(); } }
@@ -147,20 +136,19 @@ public sealed class MainViewModel : ObservableObject
     public string MinSpeedText { get => _minSpeedText; set { if (SetProperty(ref _minSpeedText, value)) PublishTrackSnapshot(); } }
     public string MaxSpeedText { get => _maxSpeedText; set { if (SetProperty(ref _maxSpeedText, value)) PublishTrackSnapshot(); } }
     public string MaxDistanceText { get => _maxDistanceText; set { if (SetProperty(ref _maxDistanceText, value)) PublishTrackSnapshot(); } }
-    public MapPackageInfo? CurrentMapPackage { get => _currentMapPackage; private set { if (SetProperty(ref _currentMapPackage, value)) NotifyVisualStateChanged(); } }
+    public MapPackageInfo? CurrentMapPackage { get => _mapViewState.CurrentMapPackage; private set { if (!EqualityComparer<MapPackageInfo?>.Default.Equals(_mapViewState.CurrentMapPackage, value)) { _mapViewState.CurrentMapPackage = value; RaisePropertyChanged(); NotifyVisualStateChanged(); } } }
     public string? SelectedDeviceId { get => _settings.PreferredDeviceId; set { if (_settings.PreferredDeviceId != value) { _settings.PreferredDeviceId = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(SelectedDeviceSummary)); } } }
     public string SelectedDeviceSummary => string.IsNullOrWhiteSpace(_settings.PreferredDeviceId) ? "Предпочтительный RTL-SDR не выбран" : _availableDevices.FirstOrDefault(item => item.DeviceId == _settings.PreferredDeviceId) is { } device ? $"Выбрано устройство: {device.Name}" : "Сохранённый RTL-SDR сейчас не подключён";
-    public TrackViewModel? SelectedTrack { get => _selectedTrack; set { if (SetProperty(ref _selectedTrack, value)) { CenterOnSelectedCommand.RaiseCanExecuteChanged(); PublishTrackSnapshot(); } } }
+    public TrackViewModel? SelectedTrack { get => _trackListState.SelectedTrack; set { if (!ReferenceEquals(_trackListState.SelectedTrack, value)) { _trackListState.SetSelectedTrack(value); RaisePropertyChanged(); CenterOnSelectedCommand.RaiseCanExecuteChanged(); PublishTrackSnapshot(); } } }
 
     public async Task InitializeAsync()
     {
         _settings = await _storageService.GetSettingsAsync(CancellationToken.None);
-        _selectedZoom = _settings.DefaultZoom;
+        _mapViewState.SelectedZoom = _settings.DefaultZoom;
         _selectedSortMode = Enum.TryParse<TrackSortMode>(_settings.DefaultSortMode, true, out var sortMode) ? sortMode : TrackSortMode.LastSeen;
         _withPositionOnly = _settings.DefaultFilterWithPositionOnly;
         _airborneOnly = _settings.DefaultFilterAirborneOnly;
-        _homeCenterLatitude = _settings.CenterLatitude;
-        _homeCenterLongitude = _settings.CenterLongitude;
+        _mapViewState.CaptureObservationCenter(_settings.CenterLatitude, _settings.CenterLongitude);
         RaisePropertyChanged(nameof(CenterLatitude)); RaisePropertyChanged(nameof(CenterLongitude)); RaisePropertyChanged(nameof(RadiusKilometers)); RaisePropertyChanged(nameof(SelectedZoom)); RaisePropertyChanged(nameof(Gain)); RaisePropertyChanged(nameof(PpmCorrection)); RaisePropertyChanged(nameof(SampleRate)); RaisePropertyChanged(nameof(DecoderHost)); RaisePropertyChanged(nameof(DecoderPort)); RaisePropertyChanged(nameof(UseSimulationFallback)); RaisePropertyChanged(nameof(SelectedDeviceId)); RaisePropertyChanged(nameof(SelectedDeviceSummary));
         PortableStatusText = $"Portable storage: {_storageCompatibility.Message}";
         WorkspaceStatusText = $"Папки: data={_workspace.DataRoot}, maps={_workspace.MapsRoot}, recordings={_workspace.RecordingsRoot}, logs={_workspace.LogsRoot}";
@@ -204,8 +192,6 @@ public sealed class MainViewModel : ObservableObject
         _isPlaybackMode = false;
         RaisePropertyChanged(nameof(IsPlaybackMode));
         _liveCts = new CancellationTokenSource();
-        _messageCounter = 0;
-        _metricsStartUtc = DateTime.UtcNow;
         await _storageService.SaveSettingsAsync(_settings, _liveCts.Token);
         var environment = await PrepareLiveEnvironmentAsync(_liveCts.Token);
         if (!environment.CanStartLive) { _liveCts.Dispose(); _liveCts = null; return; }
@@ -214,7 +200,9 @@ public sealed class MainViewModel : ObservableObject
         _isLiveRunning = true;
         StartLiveCommand.RaiseCanExecuteChanged();
         StopLiveCommand.RaiseCanExecuteChanged();
-        ModeText = "Режим: live";
+        _liveStatusState.SetMode(AppMode.Live, "Источник: bundled dump1090");
+        RaisePropertyChanged(nameof(ModeText));
+        RaisePropertyChanged(nameof(LiveSourceText));
         StatusText = "Запуск live-приёма...";
         LogEvent("Live запущен");
         UpdateCapabilitiesText();
@@ -251,7 +239,11 @@ public sealed class MainViewModel : ObservableObject
                     _isLiveRunning = false;
                     StartLiveCommand.RaiseCanExecuteChanged();
                     StopLiveCommand.RaiseCanExecuteChanged();
-                    if (!_isPlaybackMode) ModeText = "Режим: idle";
+                    if (!_isPlaybackMode)
+                    {
+                        _liveStatusState.SetMode(AppMode.Idle);
+                        RaisePropertyChanged(nameof(ModeText));
+                    }
                     PublishTrackSnapshot();
                     UpdateCapabilitiesText();
                 });
@@ -268,7 +260,8 @@ public sealed class MainViewModel : ObservableObject
         _isLiveRunning = false;
         StartLiveCommand.RaiseCanExecuteChanged();
         StopLiveCommand.RaiseCanExecuteChanged();
-        ModeText = "Режим: idle";
+        _liveStatusState.SetMode(AppMode.Idle);
+        RaisePropertyChanged(nameof(ModeText));
         StatusText = "Live-приём остановлен";
         UpdateCapabilitiesText();
         LogEvent("Остановка live");
@@ -297,12 +290,12 @@ public sealed class MainViewModel : ObservableObject
         await StopLiveAsync();
         var tracks = await _storageService.GetStoredTracksAsync(DateTime.UtcNow.AddDays(-7), null, SelectedTrack?.Icao, CancellationToken.None);
         if (tracks.Count == 0) { StatusText = "Нет архивных треков для playback"; return; }
-        _playbackFrames = _playbackService.BuildFrames(tracks, _settings.MaxTrailPoints);
-        if (_playbackFrames.Count == 0) { StatusText = "В истории нет точек с координатами для playback"; return; }
-        _playbackIndex = 0;
+        _playbackCoordinator.Load(tracks, _settings.MaxTrailPoints);
+        if (!_playbackCoordinator.HasFrames) { StatusText = "В истории нет точек с координатами для playback"; return; }
         _isPlaybackMode = true;
         RaisePropertyChanged(nameof(IsPlaybackMode));
-        ModeText = "Режим: playback";
+        _liveStatusState.SetMode(AppMode.Playback);
+        RaisePropertyChanged(nameof(ModeText));
         StatusText = "Playback запущен";
         LogEvent("Playback запущен");
         UpdateCapabilitiesText();
@@ -334,8 +327,7 @@ public sealed class MainViewModel : ObservableObject
         _settings.DefaultSortMode = SelectedSortMode.ToString();
         _settings.DefaultFilterWithPositionOnly = WithPositionOnly;
         _settings.DefaultFilterAirborneOnly = AirborneOnly;
-        _homeCenterLatitude = _settings.CenterLatitude;
-        _homeCenterLongitude = _settings.CenterLongitude;
+        _mapViewState.CaptureObservationCenter(_settings.CenterLatitude, _settings.CenterLongitude);
         await _storageService.SaveSettingsAsync(_settings, CancellationToken.None);
         await RefreshEnvironmentStatusAsync();
         StatusText = "Настройки сохранены";
@@ -358,17 +350,22 @@ public sealed class MainViewModel : ObservableObject
             yield return current;
         }
         if (!useFallback) yield break;
-        await InvokeOnUiAsync(() => { StatusText = "Основной источник live недоступен, включён simulation fallback"; ModeText = "Режим: simulation fallback"; LiveSourceText = "Источник: simulation fallback"; LogEvent("Активирован simulation fallback"); });
+        await InvokeOnUiAsync(() =>
+        {
+            StatusText = "Основной источник live недоступен, включён simulation fallback";
+            _liveStatusState.SetMode(AppMode.SimulationFallback, "Источник: simulation fallback");
+            RaisePropertyChanged(nameof(ModeText));
+            RaisePropertyChanged(nameof(LiveSourceText));
+            LogEvent("Активирован simulation fallback");
+        });
         await foreach (var message in _simulationDecoder.ReadMessagesAsync(_settings, cancellationToken)) yield return message;
     }
 
     private void AdvancePlayback()
     {
-        if (_playbackFrames.Count == 0) return;
-        if (_playbackIndex >= _playbackFrames.Count) { _playbackTimer.Stop(); _isPlaybackMode = false; RaisePropertyChanged(nameof(IsPlaybackMode)); StatusText = "Playback завершён"; ModeText = "Режим: idle"; LogEvent("Playback завершён"); return; }
-        var frame = _playbackFrames[_playbackIndex++];
+        if (!_playbackCoordinator.TryGetNextFrame(out var frame) || frame is null) { _playbackTimer.Stop(); _isPlaybackMode = false; RaisePropertyChanged(nameof(IsPlaybackMode)); StatusText = "Playback завершён"; _liveStatusState.SetMode(AppMode.Idle); RaisePropertyChanged(nameof(ModeText)); LogEvent("Playback завершён"); return; }
         ReplaceDisplayedTracks(frame.Tracks, frame.TimestampUtc);
-        ModeText = $"Режим: playback @ {frame.TimestampUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}";
+        RaisePropertyChanged(nameof(ModeText));
     }
 
     private async Task RefreshEnvironmentStatusAsync() => ApplyEnvironmentStatus(await _driverBootstrapService.InspectAsync(_settings, CancellationToken.None));
@@ -380,7 +377,8 @@ public sealed class MainViewModel : ObservableObject
         LiveReadinessText = $"Live: {(environment.CanStartLive ? "доступен" : "недоступен")} ({environment.Message})";
         SetupHeadlineText = environment.Issue switch { LiveEnvironmentIssue.None => "Portable-окружение готово", LiveEnvironmentIssue.NoCompatibleDevice => "RTL-SDR не обнаружен", LiveEnvironmentIssue.MultipleDevicesDetected => "Выберите одно устройство RTL-SDR", LiveEnvironmentIssue.DriverMissing => "Требуется установка драйвера RTL-SDR", LiveEnvironmentIssue.BackendMissing => "Bundled dump1090 отсутствует", LiveEnvironmentIssue.PortBusy => "SBS-1 порт уже занят", _ => "Live-режим требует внимания" };
         SetupGuidanceText = environment.Guidance ?? environment.Message;
-        LiveSourceText = environment.Issue == LiveEnvironmentIssue.PortBusy ? $"Источник: внешний SBS-1 {DecoderHost}:{DecoderPort}" : "Источник: bundled dump1090";
+        _liveStatusState.ApplyEnvironmentStatus(environment, DecoderHost, DecoderPort);
+        RaisePropertyChanged(nameof(LiveSourceText));
         if (environment.DeviceDetected && !string.IsNullOrWhiteSpace(environment.DeviceName)) DeviceStatusText = $"RTL-SDR: {environment.DeviceName}";
         RaisePropertyChanged(nameof(SelectedDeviceSummary));
         UpdateCapabilitiesText(environment);
@@ -390,7 +388,7 @@ public sealed class MainViewModel : ObservableObject
     {
         try
         {
-            await InvokeOnUiAsync(() => { StatusText = "Основной источник live завершился, включён simulation fallback"; ModeText = "Режим: simulation fallback"; LiveSourceText = "Источник: simulation fallback"; LogEvent("Simulation fallback активирован"); });
+            await InvokeOnUiAsync(() => { StatusText = "Основной источник live завершился, включён simulation fallback"; _liveStatusState.SetMode(AppMode.SimulationFallback, "Источник: simulation fallback"); RaisePropertyChanged(nameof(ModeText)); RaisePropertyChanged(nameof(LiveSourceText)); LogEvent("Simulation fallback активирован"); });
             await foreach (var message in _simulationDecoder.ReadMessagesAsync(_settings, cancellationToken)) { RegisterLiveMessage(); lock (_trackerLock) _trackerService.ProcessMessage(message, _recognitionLookup, _settings.MaxTrailPoints); }
             return true;
         }
@@ -412,10 +410,8 @@ public sealed class MainViewModel : ObservableObject
         var staleWindow = TimeSpan.FromSeconds(_settings.StaleTargetDisplaySeconds);
         var projected = tracks.Select(track => new TrackViewModel(track, CenterLatitude, CenterLongitude, _trackerService.GetVisualState(track, referenceUtc, activeWindow, staleWindow), string.Equals(track.Icao, selectedIcao, StringComparison.OrdinalIgnoreCase))).Where(track => MatchesFilter(track, filterState, selectedIcao)).ToList();
         projected = SelectedSortMode switch { TrackSortMode.Distance => projected.OrderBy(track => track.DistanceKm ?? double.MaxValue).ThenByDescending(track => track.Model.LastSeenUtc).ToList(), TrackSortMode.Altitude => projected.OrderByDescending(track => track.Model.AltitudeFeet ?? int.MinValue).ThenByDescending(track => track.Model.LastSeenUtc).ToList(), TrackSortMode.Speed => projected.OrderByDescending(track => track.Model.GroundSpeedKnots ?? double.MinValue).ThenByDescending(track => track.Model.LastSeenUtc).ToList(), _ => projected.OrderByDescending(track => track.Model.LastSeenUtc).ToList() };
-        _tracks.Clear();
-        foreach (var track in projected) _tracks.Add(track);
-        var preserved = _tracks.FirstOrDefault(track => string.Equals(track.Icao, selectedIcao, StringComparison.OrdinalIgnoreCase));
-        if (!ReferenceEquals(_selectedTrack, preserved)) _selectedTrack = preserved ?? _tracks.FirstOrDefault();
+        _trackListState.ReplaceTracks(projected, selectedIcao);
+        RaisePropertyChanged(nameof(Tracks));
         RaisePropertyChanged(nameof(SelectedTrack));
         RaisePropertyChanged(nameof(ActiveTrackCount));
         CenterOnSelectedCommand.RaiseCanExecuteChanged();
@@ -450,19 +446,14 @@ public sealed class MainViewModel : ObservableObject
 
     private void RegisterLiveMessage()
     {
-        _messageCounter++;
-        var now = DateTime.UtcNow;
-        if ((now - _metricsStartUtc).TotalSeconds >= 1)
-        {
-            MessagesPerSecondText = $"Messages/sec: {_messageCounter}";
-            _messageCounter = 0;
-            _metricsStartUtc = now;
-        }
+        _liveStatusState.RegisterMessage();
+        RaisePropertyChanged(nameof(MessagesPerSecondText));
     }
 
     private void CenterOnSelectedTrack() { if (SelectedTrack?.Model.Latitude is double lat && SelectedTrack.Model.Longitude is double lon) { CenterLatitude = lat; CenterLongitude = lon; StatusText = $"Карта центрирована на {SelectedTrack.Icao}"; } }
-    private void ResetCenterToObservationPoint() { CenterLatitude = _homeCenterLatitude; CenterLongitude = _homeCenterLongitude; StatusText = "Карта возвращена к observation center"; }
-    private void LogEvent(string message) { _recentEvents.Insert(0, $"{DateTime.Now:HH:mm:ss} {message}"); while (_recentEvents.Count > 8) _recentEvents.RemoveAt(_recentEvents.Count - 1); }
+    private void ResetCenterToObservationPoint() { var home = _mapViewState.GetHomeCenter(); CenterLatitude = home.Latitude; CenterLongitude = home.Longitude; StatusText = "Карта возвращена к observation center"; }
+    private void ResetFilters() { SearchText = string.Empty; WithPositionOnly = false; AirborneOnly = false; ShowSelectedOnly = false; MinAltitudeText = string.Empty; MaxAltitudeText = string.Empty; MinSpeedText = string.Empty; MaxSpeedText = string.Empty; MaxDistanceText = string.Empty; StatusText = "Фильтры сброшены"; }
+    private void LogEvent(string message) { _liveStatusState.LogEvent(message); RaisePropertyChanged(nameof(RecentEvents)); }
     private void NotifyVisualStateChanged() => VisualStateChanged?.Invoke(this, EventArgs.Empty);
     private static int? ParseNullableInt(string text) => int.TryParse(text, out var value) ? value : null;
     private static double? ParseNullableDouble(string text) => double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var invariant) ? invariant : double.TryParse(text, out var current) ? current : null;

@@ -89,18 +89,25 @@
                     <Border Background="#14202A" BorderBrush="#243746" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,0,0,12">
                         <StackPanel>
                             <TextBlock Text="Targets" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,0,0,10" />
+                            <TextBlock Text="Search (ICAO / callsign)" Foreground="#AFC5D8" />
                             <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" />
                             <UniformGrid Columns="2" Margin="0,0,0,8">
                                 <CheckBox Content="With position" IsChecked="{Binding WithPositionOnly}" Foreground="#D6E4F0" Margin="0,0,0,8" />
                                 <CheckBox Content="Airborne only" IsChecked="{Binding AirborneOnly}" Foreground="#D6E4F0" Margin="0,0,0,8" />
                             </UniformGrid>
+                            <TextBlock Text="Altitude range (ft)" Foreground="#AFC5D8" />
                             <UniformGrid Columns="2" Margin="0,0,0,8">
-                                <TextBox Text="{Binding MinAltitudeText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,8" />
-                                <TextBox Text="{Binding MaxAltitudeText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" />
-                                <TextBox Text="{Binding MinSpeedText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" />
-                                <TextBox Text="{Binding MaxSpeedText, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Text="{Binding MinAltitudeText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,8" ToolTip="Min altitude" />
+                                <TextBox Text="{Binding MaxAltitudeText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" ToolTip="Max altitude" />
                             </UniformGrid>
-                            <TextBox Text="{Binding MaxDistanceText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,10" />
+                            <TextBlock Text="Speed range (kt)" Foreground="#AFC5D8" />
+                            <UniformGrid Columns="2" Margin="0,0,0,8">
+                                <TextBox Text="{Binding MinSpeedText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,8" ToolTip="Min speed" />
+                                <TextBox Text="{Binding MaxSpeedText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" ToolTip="Max speed" />
+                            </UniformGrid>
+                            <TextBlock Text="Max distance (km)" Foreground="#AFC5D8" />
+                            <TextBox Text="{Binding MaxDistanceText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,10" ToolTip="Max distance from observation center" />
+                            <Button Content="Reset Filters" Command="{Binding ResetFiltersCommand}" Padding="12,6" Margin="0,0,0,10" />
 
                             <ListBox ItemsSource="{Binding Tracks}" SelectedItem="{Binding SelectedTrack}" Background="#0F171E" BorderThickness="0" Foreground="#E7F1F8" MaxHeight="260">
                                 <ListBox.ItemTemplate>
@@ -139,10 +146,13 @@
                             <TextBlock Text="{Binding SelectedTrack.Operator, StringFormat=Operator: {0}}" Foreground="#AFC5D8" />
                             <TextBlock Text="{Binding SelectedTrack.Country, StringFormat=Country: {0}}" Foreground="#AFC5D8" />
                             <TextBlock Text="{Binding SelectedTrack.PositionText, StringFormat=Position: {0}}" Foreground="#AFC5D8" />
-                            <TextBlock Text="{Binding SelectedTrack.DistanceText, StringFormat=Distance: {0}}" Foreground="#AFC5D8" />
-                            <TextBlock Text="{Binding SelectedTrack.BearingText, StringFormat=Bearing: {0}}" Foreground="#AFC5D8" />
+                            <WrapPanel>
+                                <TextBlock Text="{Binding SelectedTrack.DistanceText, StringFormat=Distance: {0}}" Foreground="#AFC5D8" Margin="0,0,12,0" />
+                                <TextBlock Text="{Binding SelectedTrack.BearingText, StringFormat=Bearing: {0}}" Foreground="#AFC5D8" />
+                            </WrapPanel>
                             <TextBlock Text="{Binding SelectedTrack.HeadingText, StringFormat=Heading: {0}}" Foreground="#AFC5D8" />
                             <TextBlock Text="{Binding SelectedTrack.VerticalRateText, StringFormat=Vertical rate: {0}}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding SelectedTrack.TrackStatusText, StringFormat=Status: {0}, TargetNullValue=No selection}" Foreground="#F0C879" />
                             <TextBlock Text="{Binding SelectedTrack.EmitterCategory, StringFormat=Emitter: {0}}" Foreground="#AFC5D8" />
                             <TextBlock Text="{Binding SelectedTrack.Squawk, StringFormat=Squawk: {0}}" Foreground="#AFC5D8" />
                             <TextBlock Text="{Binding SelectedTrack.LastSeenText, StringFormat=Last seen: {0}}" Foreground="#AFC5D8" />
@@ -154,17 +164,20 @@
                         <StackPanel>
                             <TextBlock Text="Live Status" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,0,0,10" />
                             <TextBlock Text="{Binding ModeText}" Foreground="#D6E4F0" />
+                            <TextBlock Text="Health" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,8,0,4" />
                             <TextBlock Text="{Binding LiveSourceText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding BackendReadinessText}" Foreground="#AFC5D8" />
                             <TextBlock Text="{Binding DriverReadinessText}" Foreground="#AFC5D8" />
                             <TextBlock Text="{Binding LiveReadinessText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding DeviceStatusText}" Foreground="#AFC5D8" Margin="0,8,0,0" />
                             <TextBlock Text="{Binding DecoderStatusText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
+                            <TextBlock Text="Metrics" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,8,0,4" />
                             <TextBlock Text="{Binding MessagesPerSecondText}" Foreground="#D6E4F0" Margin="0,8,0,0" />
                             <TextBlock Text="{Binding TrackMetricsText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding MapStatusText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding RecognitionStatusText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding CapabilitiesText}" Foreground="#D6E4F0" Margin="0,8,0,0" TextWrapping="Wrap" />
+                            <TextBlock Text="Recent Events" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,8,0,4" />
                             <ItemsControl ItemsSource="{Binding RecentEvents}" Margin="0,8,0,0">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
