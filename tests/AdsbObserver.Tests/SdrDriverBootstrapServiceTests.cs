@@ -17,6 +17,7 @@ public sealed class SdrDriverBootstrapServiceTests
         Assert.Equal(LiveEnvironmentIssue.NoCompatibleDevice, status.Issue);
         Assert.False(status.DeviceDetected);
         Assert.False(status.CanStartLive);
+        Assert.Contains("Playback", status.Guidance);
     }
 
     [Fact]
@@ -66,6 +67,8 @@ public sealed class SdrDriverBootstrapServiceTests
 
         Assert.Equal(LiveEnvironmentIssue.DriverMissing, status.Issue);
         Assert.False(status.DriverInstalled);
+        Assert.False(status.CanBootstrapDriver);
+        Assert.Contains("Portable", status.Guidance);
     }
 
     private sealed class StubDeviceDetector(IReadOnlyList<SdrDeviceInfo> devices) : IDeviceDetector

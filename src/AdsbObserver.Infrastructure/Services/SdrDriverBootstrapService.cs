@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using System.ComponentModel;
 using System.Net.Sockets;
 using AdsbObserver.Core.Interfaces;
 using AdsbObserver.Core.Models;
@@ -12,14 +10,14 @@ public sealed class SdrDriverBootstrapService(IDeviceDetector deviceDetector) : 
     {
         var devices = await deviceDetector.DetectAsync(cancellationToken);
         var compatibleDevices = devices.Where(device => device.IsCompatible).ToList();
-        var device = compatibleDevices.FirstOrDefault();
+        var selectedDevice = ResolveSelectedDevice(compatibleDevices, settings.PreferredDeviceId);
         var driverReady = compatibleDevices.Any(item => item.IsDriverReady);
         var backendPath = BundledAssetPathResolver.ResolveDecoderExecutable(settings);
         var backendAvailable = !string.IsNullOrWhiteSpace(backendPath) && File.Exists(backendPath);
         var portReachable = await IsPortReachableAsync(settings.DecoderHost, settings.DecoderPort, cancellationToken);
-        var canBootstrapDriver = false;
+        const bool canBootstrapDriver = false;
 
-        if (device is null)
+        if (selectedDevice is null)
         {
             return new LiveEnvironmentStatus(
                 LiveEnvironmentIssue.NoCompatibleDevice,
@@ -40,7 +38,7 @@ public sealed class SdrDriverBootstrapService(IDeviceDetector deviceDetector) : 
             return new LiveEnvironmentStatus(
                 LiveEnvironmentIssue.MultipleDevicesDetected,
                 true,
-                compatibleDevices.Any(item => item.IsDriverReady),
+                driverReady,
                 backendAvailable,
                 portReachable,
                 canBootstrapDriver,
@@ -49,11 +47,11 @@ public sealed class SdrDriverBootstrapService(IDeviceDetector deviceDetector) : 
                 DriverBootstrapOutcome.None,
                 "Обнаружено несколько совместимых RTL-SDR.",
                 "Оставьте один донгл или выберите предпочтительное устройство в настройках.",
-                device.Name,
-                device.DriverName ?? device.ServiceName);
+                selectedDevice.Name,
+                selectedDevice.DriverName ?? selectedDevice.ServiceName);
         }
 
-        if (!driverReady)
+        if (!selectedDevice.IsDriverReady)
         {
             return new LiveEnvironmentStatus(
                 LiveEnvironmentIssue.DriverMissing,
@@ -67,8 +65,8 @@ public sealed class SdrDriverBootstrapService(IDeviceDetector deviceDetector) : 
                 DriverBootstrapOutcome.ManualActionRequired,
                 "RTL-SDR обнаружен, но драйвер WinUSB/libusb не готов.",
                 "Подготовьте драйвер донгла вне программы и повторите проверку. Portable-версия не устанавливает драйверы.",
-                device.Name,
-                device.DriverName ?? device.ServiceName);
+                selectedDevice.Name,
+                selectedDevice.DriverName ?? selectedDevice.ServiceName);
         }
 
         if (!backendAvailable)
@@ -85,8 +83,8 @@ public sealed class SdrDriverBootstrapService(IDeviceDetector deviceDetector) : 
                 DriverBootstrapOutcome.NotNeeded,
                 "В portable-пакете отсутствует bundled backend readsb.",
                 "Проверьте, что readsb.exe включен в portable release layout.",
-                device.Name,
-                device.DriverName ?? device.ServiceName);
+                selectedDevice.Name,
+                selectedDevice.DriverName ?? selectedDevice.ServiceName);
         }
 
         if (portReachable)
@@ -103,8 +101,8 @@ public sealed class SdrDriverBootstrapService(IDeviceDetector deviceDetector) : 
                 DriverBootstrapOutcome.NotNeeded,
                 "Live-окружение готово. SBS-1 порт уже доступен.",
                 "На указанном SBS-1 порту уже есть поток. Live-режим может подключиться без запуска второго backend.",
-                device.Name,
-                device.DriverName ?? device.ServiceName);
+                selectedDevice.Name,
+                selectedDevice.DriverName ?? selectedDevice.ServiceName);
         }
 
         return new LiveEnvironmentStatus(
@@ -119,13 +117,26 @@ public sealed class SdrDriverBootstrapService(IDeviceDetector deviceDetector) : 
             DriverBootstrapOutcome.NotNeeded,
             "Live-окружение готово. Bundled backend можно запускать по требованию.",
             "Нажмите Start Live, чтобы запустить bundled readsb и начать прием ADS-B.",
-            device.Name,
-            device.DriverName ?? device.ServiceName);
+            selectedDevice.Name,
+            selectedDevice.DriverName ?? selectedDevice.ServiceName);
     }
 
-    public async Task<LiveEnvironmentStatus> EnsureReadyAsync(ObservationSettings settings, CancellationToken cancellationToken)
+    public Task<LiveEnvironmentStatus> EnsureReadyAsync(ObservationSettings settings, CancellationToken cancellationToken) =>
+        InspectAsync(settings, cancellationToken);
+
+    private static SdrDeviceInfo? ResolveSelectedDevice(IReadOnlyList<SdrDeviceInfo> compatibleDevices, string? preferredDeviceId)
     {
-        return await InspectAsync(settings, cancellationToken);
+        if (compatibleDevices.Count == 0)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(preferredDeviceId))
+        {
+            return compatibleDevices[0];
+        }
+
+        return compatibleDevices.FirstOrDefault(device => device.DeviceId == preferredDeviceId) ?? compatibleDevices[0];
     }
 
     private static async Task<bool> IsPortReachableAsync(string host, int port, CancellationToken cancellationToken)

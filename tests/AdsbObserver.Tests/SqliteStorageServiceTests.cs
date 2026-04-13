@@ -13,7 +13,8 @@ public sealed class SqliteStorageServiceTests
         try
         {
             var storage = new SqliteStorageService(databasePath);
-            await storage.InitializeAsync(CancellationToken.None);
+            var compatibility = await storage.InitializeAsync(CancellationToken.None);
+            Assert.True(compatibility.IsCompatible);
 
             var settings = new ObservationSettings
             {
@@ -45,7 +46,46 @@ public sealed class SqliteStorageServiceTests
         }
         finally
         {
-            _ = databasePath;
+            if (File.Exists(databasePath))
+            {
+                File.Delete(databasePath);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task InitializeAsync_RejectsFutureStorageVersion()
+    {
+        var databasePath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.db");
+        try
+        {
+            var storage = new SqliteStorageService(databasePath);
+            await storage.InitializeAsync(CancellationToken.None);
+
+            await using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={databasePath}");
+            await connection.OpenAsync();
+            var command = connection.CreateCommand();
+            command.CommandText =
+                """
+                INSERT INTO app_metadata(key, value)
+                VALUES('storage_version', '99')
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+                """;
+            await command.ExecuteNonQueryAsync();
+
+            var secondStorage = new SqliteStorageService(databasePath);
+            var compatibility = await secondStorage.InitializeAsync(CancellationToken.None);
+
+            Assert.False(compatibility.IsCompatible);
+            Assert.True(compatibility.RequiresMigration);
+            Assert.Equal(99, compatibility.DetectedVersion);
+        }
+        finally
+        {
+            if (File.Exists(databasePath))
+            {
+                File.Delete(databasePath);
+            }
         }
     }
 }

@@ -21,7 +21,8 @@ public sealed class MainViewModel : ObservableObject
     private readonly IMapTileService _mapTileService;
     private readonly AircraftTrackerService _trackerService;
     private readonly PlaybackService _playbackService;
-    private readonly string _dataRoot;
+    private readonly PortableWorkspacePaths _workspace;
+    private readonly StorageCompatibilityStatus _storageCompatibility;
     private readonly DispatcherTimer _playbackTimer;
     private readonly ObservableCollection<TrackViewModel> _tracks = [];
     private readonly ObservableCollection<SdrDeviceInfo> _availableDevices = [];
@@ -32,19 +33,22 @@ public sealed class MainViewModel : ObservableObject
     private CancellationTokenSource? _liveCts;
     private ObservationSettings _settings = new();
     private TrackViewModel? _selectedTrack;
-    private string _statusText = "Initializing...";
-    private string _deviceStatusText = "Checking SDR device...";
-    private string _modeText = "Mode: Idle";
-    private string _recognitionStatusText = "Recognition DB: not loaded";
-    private string _decoderStatusText = "Decoder process: not started";
-    private string _backendReadinessText = "Backend ready: pending";
-    private string _driverReadinessText = "Driver ready: pending";
-    private string _liveReadinessText = "Live ready: pending";
-    private string _setupHeadlineText = "First-run setup pending";
-    private string _setupGuidanceText = "Prepare Live to validate the bundled backend, device, and driver.";
-    private string _liveSourceText = "Live source: bundled readsb";
-    private bool _isSetupBlocking = true;
-    private string _mapStatusText = "Map package: not selected";
+    private string _statusText = "Инициализация portable-окружения...";
+    private string _deviceStatusText = "Проверка RTL-SDR...";
+    private string _modeText = "Режим: ожидание";
+    private string _recognitionStatusText = "База распознавания: не загружена";
+    private string _decoderStatusText = "Backend: не запущен";
+    private string _backendReadinessText = "Bundled backend: проверка...";
+    private string _driverReadinessText = "Драйвер RTL-SDR: проверка...";
+    private string _liveReadinessText = "Live-режим: проверка...";
+    private string _setupHeadlineText = "Portable first-run";
+    private string _setupGuidanceText = "Приложение готовит portable-папки и проверяет, какие режимы доступны.";
+    private string _liveSourceText = "Источник live: bundled readsb";
+    private string _mapStatusText = "Карты: не найдены";
+    private string _portableStatusText = "Portable storage: проверка...";
+    private string _workspaceStatusText = string.Empty;
+    private string _capabilitiesText = "Доступно: анализ";
+    private bool _isSetupBlocking;
     private bool _isLiveRunning;
     private bool _isPlaybackMode;
     private int _selectedZoom = 8;
@@ -63,7 +67,8 @@ public sealed class MainViewModel : ObservableObject
         IMapTileService mapTileService,
         AircraftTrackerService trackerService,
         PlaybackService playbackService,
-        string dataRoot)
+        PortableWorkspacePaths workspace,
+        StorageCompatibilityStatus storageCompatibility)
     {
         _storageService = storageService;
         _deviceDetector = deviceDetector;
@@ -76,13 +81,12 @@ public sealed class MainViewModel : ObservableObject
         _mapTileService = mapTileService;
         _trackerService = trackerService;
         _playbackService = playbackService;
-        _dataRoot = dataRoot;
+        _workspace = workspace;
+        _storageCompatibility = storageCompatibility;
+
         _decoderProcessService.StatusChanged += (_, status) =>
         {
-            _ = Application.Current.Dispatcher.InvokeAsync(() =>
-            {
-                DecoderStatusText = status.Message;
-            });
+            _ = Application.Current.Dispatcher.InvokeAsync(() => { DecoderStatusText = TranslateDecoderStatus(status.Message); });
         };
 
         StartLiveCommand = new RelayCommand(() => _ = StartLiveAsync(), () => !_isLiveRunning);
@@ -90,7 +94,7 @@ public sealed class MainViewModel : ObservableObject
         RefreshDevicesCommand = new RelayCommand(() => _ = RefreshDevicesAsync());
         StartPlaybackCommand = new RelayCommand(() => _ = StartPlaybackAsync());
         PausePlaybackCommand = new RelayCommand(PausePlayback);
-        DownloadMapCommand = new RelayCommand(() => _ = DownloadCurrentMapAsync());
+        DownloadMapCommand = new RelayCommand(() => _ = RefreshMapPackagesAsync());
         SaveSettingsCommand = new RelayCommand(() => _ = SaveSettingsAsync());
         PrepareLiveCommand = new RelayCommand(() => _ = PrepareLiveEnvironmentAsync());
 
@@ -123,6 +127,9 @@ public sealed class MainViewModel : ObservableObject
     public string LiveSourceText { get => _liveSourceText; private set => SetProperty(ref _liveSourceText, value); }
     public bool IsSetupBlocking { get => _isSetupBlocking; private set => SetProperty(ref _isSetupBlocking, value); }
     public string MapStatusText { get => _mapStatusText; private set => SetProperty(ref _mapStatusText, value); }
+    public string PortableStatusText { get => _portableStatusText; private set => SetProperty(ref _portableStatusText, value); }
+    public string WorkspaceStatusText { get => _workspaceStatusText; private set => SetProperty(ref _workspaceStatusText, value); }
+    public string CapabilitiesText { get => _capabilitiesText; private set => SetProperty(ref _capabilitiesText, value); }
     public double CenterLatitude { get => _settings.CenterLatitude; set { _settings.CenterLatitude = value; RaisePropertyChanged(); NotifyVisualStateChanged(); } }
     public double CenterLongitude { get => _settings.CenterLongitude; set { _settings.CenterLongitude = value; RaisePropertyChanged(); NotifyVisualStateChanged(); } }
     public double RadiusKilometers { get => _settings.DisplayRadiusKilometers; set { _settings.DisplayRadiusKilometers = value; RaisePropertyChanged(); NotifyVisualStateChanged(); } }
@@ -134,7 +141,17 @@ public sealed class MainViewModel : ObservableObject
     public bool UseSimulationFallback { get => _settings.UseSimulationFallback; set { _settings.UseSimulationFallback = value; RaisePropertyChanged(); } }
     public int ActiveTrackCount => _tracks.Count;
     public int SelectedZoom { get => _selectedZoom; set { if (SetProperty(ref _selectedZoom, value)) { NotifyVisualStateChanged(); } } }
-    public MapLayerType SelectedMapLayer { get => _selectedMapLayer; set => SetProperty(ref _selectedMapLayer, value); }
+    public MapLayerType SelectedMapLayer
+    {
+        get => _selectedMapLayer;
+        set
+        {
+            if (SetProperty(ref _selectedMapLayer, value))
+            {
+                _ = RefreshMapPackagesAsync();
+            }
+        }
+    }
     public MapPackageInfo? CurrentMapPackage { get => _currentMapPackage; private set { if (SetProperty(ref _currentMapPackage, value)) { NotifyVisualStateChanged(); } } }
     public bool IsPlaybackMode => _isPlaybackMode;
 
@@ -160,13 +177,13 @@ public sealed class MainViewModel : ObservableObject
         {
             if (string.IsNullOrWhiteSpace(_settings.PreferredDeviceId))
             {
-                return "Preferred RTL-SDR: not selected";
+                return "Предпочтительный RTL-SDR не выбран";
             }
 
             var device = _availableDevices.FirstOrDefault(item => item.DeviceId == _settings.PreferredDeviceId);
             return device is null
-                ? "Preferred RTL-SDR: saved device not currently connected"
-                : $"Preferred RTL-SDR: {device.Name}";
+                ? "Сохраненный RTL-SDR сейчас не подключен"
+                : $"Выбрано устройство: {device.Name}";
         }
     }
 
@@ -180,6 +197,7 @@ public sealed class MainViewModel : ObservableObject
     {
         _settings = await _storageService.GetSettingsAsync(CancellationToken.None);
         _selectedZoom = _settings.DefaultZoom;
+
         RaisePropertyChanged(nameof(CenterLatitude));
         RaisePropertyChanged(nameof(CenterLongitude));
         RaisePropertyChanged(nameof(RadiusKilometers));
@@ -193,16 +211,17 @@ public sealed class MainViewModel : ObservableObject
         RaisePropertyChanged(nameof(SelectedDeviceId));
         RaisePropertyChanged(nameof(SelectedDeviceSummary));
 
+        PortableStatusText = $"Portable storage: {_storageCompatibility.Message}";
+        WorkspaceStatusText = $"Папки: data={_workspace.DataRoot}, maps={_workspace.MapsRoot}, recordings={_workspace.RecordingsRoot}";
+
         _recognitionLookup = await _storageService.GetRecognitionLookupAsync(CancellationToken.None);
-        RecognitionStatusText = $"Recognition DB: {_recognitionLookup.Count} records";
+        RecognitionStatusText = $"База распознавания: {_recognitionLookup.Count} записей";
 
-        var packages = await _storageService.GetMapPackagesAsync(CancellationToken.None);
-        CurrentMapPackage = packages.FirstOrDefault(package => package.LayerType == SelectedMapLayer) ?? packages.FirstOrDefault();
-        MapStatusText = CurrentMapPackage is null ? "Map package: not selected" : $"Map package: {CurrentMapPackage.Name}";
-
+        await RefreshMapPackagesAsync();
         await RefreshDevicesAsync();
         await RefreshEnvironmentStatusAsync();
-        StatusText = "Ready";
+        UpdateCapabilitiesText();
+        StatusText = "Portable-клиент готов";
     }
 
     public async Task RefreshDevicesAsync()
@@ -218,9 +237,9 @@ public sealed class MainViewModel : ObservableObject
 
             DeviceStatusText = devices.Count switch
             {
-                0 => "SDR device: not detected",
-                1 => $"SDR device: {devices[0].Name}",
-                _ => $"SDR devices: {devices.Count} compatible devices found"
+                0 => "RTL-SDR: не обнаружен",
+                1 => $"RTL-SDR: {devices[0].Name}",
+                _ => $"RTL-SDR: найдено {devices.Count} совместимых устройств"
             };
 
             if (devices.Count == 1)
@@ -238,8 +257,9 @@ public sealed class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            DeviceStatusText = $"SDR detection error: {ex.Message}";
-            LiveReadinessText = "Live ready: no";
+            DeviceStatusText = $"Ошибка проверки RTL-SDR: {ex.Message}";
+            LiveReadinessText = "Live-режим: недоступен";
+            UpdateCapabilitiesText();
         }
     }
 
@@ -269,8 +289,8 @@ public sealed class MainViewModel : ObservableObject
         if (!decoderStatus.IsReady)
         {
             StatusText = decoderStatus.FailureReason == DecoderFailureReason.PortUnavailable
-                ? $"{decoderStatus.Message}. Check whether the bundled backend supports the configured arguments or if another process blocked the port."
-                : decoderStatus.Message;
+                ? $"{TranslateDecoderStatus(decoderStatus.Message)} Проверьте порт и bundled backend."
+                : TranslateDecoderStatus(decoderStatus.Message);
             await RefreshEnvironmentStatusAsync();
             _liveCts.Dispose();
             _liveCts = null;
@@ -280,8 +300,9 @@ public sealed class MainViewModel : ObservableObject
         _isLiveRunning = true;
         StartLiveCommand.RaiseCanExecuteChanged();
         StopLiveCommand.RaiseCanExecuteChanged();
-        ModeText = "Mode: Live";
-        StatusText = "Starting live ingest...";
+        ModeText = "Режим: live";
+        StatusText = "Запуск live-приема...";
+        UpdateCapabilitiesText();
 
         _ = Task.Run(async () =>
         {
@@ -289,7 +310,7 @@ public sealed class MainViewModel : ObservableObject
             {
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
-                    StatusText = "Live ingest running via bundled readsb";
+                    StatusText = "Live-прием работает через bundled readsb";
                 });
 
                 await foreach (var message in ReadWithFallbackAsync(_liveDecoder, _liveCts.Token))
@@ -325,7 +346,7 @@ public sealed class MainViewModel : ObservableObject
                 {
                     await Application.Current.Dispatcher.InvokeAsync(() =>
                     {
-                        StatusText = $"Live ingest error: {ex.Message}";
+                        StatusText = $"Ошибка live-приема: {ex.Message}";
                     });
                 }
             }
@@ -338,8 +359,10 @@ public sealed class MainViewModel : ObservableObject
                     StopLiveCommand.RaiseCanExecuteChanged();
                     if (!_isPlaybackMode)
                     {
-                        ModeText = "Mode: Idle";
+                        ModeText = "Режим: ожидание";
                     }
+
+                    UpdateCapabilitiesText();
                 });
 
                 await _decoderProcessService.StopAsync(CancellationToken.None);
@@ -354,8 +377,9 @@ public sealed class MainViewModel : ObservableObject
         _isLiveRunning = false;
         StartLiveCommand.RaiseCanExecuteChanged();
         StopLiveCommand.RaiseCanExecuteChanged();
-        ModeText = "Mode: Idle";
-        StatusText = "Live ingest stopped";
+        ModeText = "Режим: ожидание";
+        StatusText = "Live-прием остановлен";
+        UpdateCapabilitiesText();
         return _decoderProcessService.StopAsync(CancellationToken.None);
     }
 
@@ -363,15 +387,15 @@ public sealed class MainViewModel : ObservableObject
     {
         var imported = await _recognitionImportService.ImportAsync(path, CancellationToken.None);
         _recognitionLookup = await _storageService.GetRecognitionLookupAsync(CancellationToken.None);
-        RecognitionStatusText = $"Recognition DB: {_recognitionLookup.Count} records";
-        StatusText = $"Imported {imported} recognition records";
+        RecognitionStatusText = $"База распознавания: {_recognitionLookup.Count} записей";
+        StatusText = $"Импортировано записей: {imported}";
         return imported;
     }
 
     public async Task ExportTracksAsync(string path)
     {
         await _trackExportService.ExportAsync(path, SelectedTrack?.Icao, null, null, CancellationToken.None);
-        StatusText = $"Exported track data to {path}";
+        StatusText = $"CSV экспортирован: {path}";
     }
 
     public async Task StartPlaybackAsync()
@@ -381,22 +405,23 @@ public sealed class MainViewModel : ObservableObject
         var tracks = await _storageService.GetStoredTracksAsync(DateTime.UtcNow.AddDays(-7), null, null, CancellationToken.None);
         if (tracks.Count == 0)
         {
-            StatusText = "No archived tracks available for playback";
+            StatusText = "Нет архивных треков для playback";
             return;
         }
 
         _playbackFrames = _playbackService.BuildFrames(tracks);
         if (_playbackFrames.Count == 0)
         {
-            StatusText = "Stored tracks do not contain position history";
+            StatusText = "В истории нет точек с координатами для playback";
             return;
         }
 
         _playbackIndex = 0;
         _isPlaybackMode = true;
         RaisePropertyChanged(nameof(IsPlaybackMode));
-        ModeText = "Mode: Playback";
-        StatusText = "Playback started";
+        ModeText = "Режим: playback";
+        StatusText = "Playback запущен";
+        UpdateCapabilitiesText();
         _playbackTimer.Start();
     }
 
@@ -405,49 +430,47 @@ public sealed class MainViewModel : ObservableObject
         _playbackTimer.Stop();
         if (_isPlaybackMode)
         {
-            StatusText = "Playback paused";
+            StatusText = "Playback на паузе";
         }
     }
 
-    public async Task DownloadCurrentMapAsync()
+    public async Task RefreshMapPackagesAsync()
     {
-        var layer = SelectedMapLayer;
-        var bounds = BuildBounds(_settings.CenterLatitude, _settings.CenterLongitude, _settings.DisplayRadiusKilometers);
-        var packagesDirectory = Path.Combine(_dataRoot, "maps");
-        Directory.CreateDirectory(packagesDirectory);
+        Directory.CreateDirectory(_workspace.MapsRoot);
 
-        var package = new MapPackageInfo
+        var packages = new List<MapPackageInfo>();
+        foreach (var filePath in Directory.EnumerateFiles(_workspace.MapsRoot, "*.mbtiles", SearchOption.TopDirectoryOnly))
         {
-            Name = $"{layer}_{DateTime.UtcNow:yyyyMMdd_HHmmss}",
-            LayerType = layer,
-            FilePath = Path.Combine(packagesDirectory, $"{layer}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.mbtiles"),
-            MinZoom = _settings.MinZoom,
-            MaxZoom = _settings.MaxZoom,
-            North = bounds.North,
-            South = bounds.South,
-            East = bounds.East,
-            West = bounds.West,
-            DownloadedUtc = DateTime.UtcNow
-        };
+            var package = await _mapTileService.InspectPackageAsync(filePath, CancellationToken.None);
+            if (package is null)
+            {
+                continue;
+            }
 
-        var progress = new Progress<int>(value => StatusText = $"Downloading {layer} map... {value}%");
-        var template = layer == MapLayerType.Osm
-            ? "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-            : "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+            await _storageService.SaveMapPackageAsync(package, CancellationToken.None);
+            packages.Add(package);
+        }
 
-        await _mapTileService.DownloadPackageAsync(package, template, progress, CancellationToken.None);
-        await _storageService.SaveMapPackageAsync(package, CancellationToken.None);
+        if (packages.Count == 0)
+        {
+            var storedPackages = await _storageService.GetMapPackagesAsync(CancellationToken.None);
+            packages.AddRange(storedPackages.Where(package => File.Exists(package.FilePath)));
+        }
 
-        CurrentMapPackage = package;
-        MapStatusText = $"Map package: {package.Name}";
-        StatusText = $"Map package downloaded: {package.Name}";
+        CurrentMapPackage = packages.FirstOrDefault(package => package.LayerType == SelectedMapLayer) ?? packages.FirstOrDefault();
+        MapStatusText = CurrentMapPackage is null
+            ? $"Карты: не найдены в {_workspace.MapsRoot}. Используется фоновая сетка."
+            : $"Карты: {CurrentMapPackage.Name}";
+
+        UpdateCapabilitiesText();
+        NotifyVisualStateChanged();
     }
 
     public async Task SaveSettingsAsync()
     {
         await _storageService.SaveSettingsAsync(_settings, CancellationToken.None);
         await RefreshEnvironmentStatusAsync();
-        StatusText = "Settings saved";
+        StatusText = "Настройки сохранены";
     }
 
     public async Task<byte[]?> GetTileBytesAsync(int zoom, int x, int y, CancellationToken cancellationToken)
@@ -494,7 +517,7 @@ public sealed class MainViewModel : ObservableObject
 
         await Application.Current.Dispatcher.InvokeAsync(() =>
         {
-            StatusText = "Primary decoder unavailable, switching to simulation fallback";
+            StatusText = "Основной live-backend недоступен, включен simulation fallback";
         });
 
         await foreach (var message in _simulationDecoder.ReadMessagesAsync(_settings, cancellationToken))
@@ -513,13 +536,13 @@ public sealed class MainViewModel : ObservableObject
         if (_playbackIndex >= _playbackFrames.Count)
         {
             _playbackTimer.Stop();
-            StatusText = "Playback completed";
+            StatusText = "Playback завершен";
             return;
         }
 
         var frame = _playbackFrames[_playbackIndex++];
         RefreshTrackCollection(frame.Tracks);
-        ModeText = $"Mode: Playback @ {frame.TimestampUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}";
+        ModeText = $"Режим: playback @ {frame.TimestampUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}";
     }
 
     private void RefreshTrackCollection(IReadOnlyList<AircraftTrack> tracks)
@@ -542,24 +565,11 @@ public sealed class MainViewModel : ObservableObject
 
     private async Task<LiveEnvironmentStatus> PrepareLiveEnvironmentAsync(CancellationToken cancellationToken = default)
     {
-        StatusText = "Checking live environment...";
-        var environment = await _driverBootstrapService.InspectAsync(_settings, cancellationToken);
+        StatusText = "Проверка live-окружения...";
+        var environment = await _driverBootstrapService.EnsureReadyAsync(_settings, cancellationToken);
         ApplyEnvironmentStatus(environment);
-
-        if (!environment.DeviceDetected)
-        {
-            StatusText = environment.Message;
-            return environment;
-        }
-
-        if (!environment.DriverInstalled && environment.CanBootstrapDriver)
-        {
-            StatusText = "Launching SDR driver bootstrap...";
-            environment = await _driverBootstrapService.EnsureReadyAsync(_settings, cancellationToken);
-            ApplyEnvironmentStatus(environment);
-        }
-
         StatusText = environment.Message;
+        UpdateCapabilitiesText();
         return environment;
     }
 
@@ -571,32 +581,31 @@ public sealed class MainViewModel : ObservableObject
 
     private void ApplyEnvironmentStatus(LiveEnvironmentStatus environment)
     {
-        BackendReadinessText = $"Backend ready: {(environment.BackendAvailable ? "yes" : "no")}";
-        DriverReadinessText = $"Driver ready: {(environment.DriverInstalled ? "yes" : "no")}";
-        LiveReadinessText = $"Live ready: {(environment.CanStartLive ? "yes" : "no")} ({environment.Message})";
+        BackendReadinessText = $"Bundled backend: {(environment.BackendAvailable ? "готов" : "не найден")}";
+        DriverReadinessText = $"Драйвер RTL-SDR: {(environment.DriverInstalled ? "готов" : "не готов")}";
+        LiveReadinessText = $"Live-режим: {(environment.CanStartLive ? "доступен" : "недоступен")} ({environment.Message})";
         SetupHeadlineText = environment.Issue switch
         {
-            LiveEnvironmentIssue.None => "Live setup complete",
-            LiveEnvironmentIssue.NoCompatibleDevice => "RTL-SDR not detected",
-            LiveEnvironmentIssue.MultipleDevicesDetected => "Choose a single RTL-SDR device",
-            LiveEnvironmentIssue.DriverMissing => "Driver setup required",
-            LiveEnvironmentIssue.DriverInstallCancelled => "Driver setup was cancelled",
-            LiveEnvironmentIssue.DriverInstallFailed => "Driver setup failed",
-            LiveEnvironmentIssue.BackendMissing => "Bundled backend missing",
-            LiveEnvironmentIssue.PortBusy => "External SBS-1 source already available",
-            _ => "Live setup needs attention"
+            LiveEnvironmentIssue.None => "Portable-окружение готово",
+            LiveEnvironmentIssue.NoCompatibleDevice => "RTL-SDR не обнаружен",
+            LiveEnvironmentIssue.MultipleDevicesDetected => "Выберите одно устройство RTL-SDR",
+            LiveEnvironmentIssue.DriverMissing => "Донгл требует внешней подготовки",
+            LiveEnvironmentIssue.BackendMissing => "Bundled backend отсутствует",
+            LiveEnvironmentIssue.PortBusy => "SBS-1 поток уже доступен",
+            _ => "Live-окружение требует внимания"
         };
         SetupGuidanceText = environment.Guidance ?? environment.Message;
         LiveSourceText = environment.Issue == LiveEnvironmentIssue.PortBusy
-            ? $"Live source: external SBS-1 on {_settings.DecoderHost}:{_settings.DecoderPort}"
-            : "Live source: bundled readsb";
-        IsSetupBlocking = !environment.CanStartLive && !_isLiveRunning;
+            ? $"Источник live: внешний SBS-1 {DecoderHost}:{DecoderPort}"
+            : "Источник live: bundled readsb";
+        IsSetupBlocking = false;
         if (environment.DeviceDetected && !string.IsNullOrWhiteSpace(environment.DeviceName))
         {
-            DeviceStatusText = $"SDR device: {environment.DeviceName}";
+            DeviceStatusText = $"RTL-SDR: {environment.DeviceName}";
         }
 
         RaisePropertyChanged(nameof(SelectedDeviceSummary));
+        UpdateCapabilitiesText(environment);
     }
 
     private async Task<bool> TryRunSimulationFallbackAsync(CancellationToken cancellationToken)
@@ -605,8 +614,8 @@ public sealed class MainViewModel : ObservableObject
         {
             await Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                StatusText = "Primary live backend failed, switching to simulation fallback";
-                ModeText = "Mode: Simulation Fallback";
+                StatusText = "Основной live-backend завершился, включен simulation fallback";
+                ModeText = "Режим: simulation fallback";
             });
 
             await foreach (var message in _simulationDecoder.ReadMessagesAsync(_settings, cancellationToken))
@@ -635,10 +644,29 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private static (double North, double South, double East, double West) BuildBounds(double centerLat, double centerLon, double radiusKm)
+    private void UpdateCapabilitiesText(LiveEnvironmentStatus? environment = null)
     {
-        var latDelta = radiusKm / 111d;
-        var lonDelta = radiusKm / (111d * Math.Max(0.2, Math.Cos(centerLat * Math.PI / 180d)));
-        return (centerLat + latDelta, centerLat - latDelta, centerLon + lonDelta, centerLon - lonDelta);
+        var liveReady = environment?.CanStartLive ?? LiveReadinessText.Contains("доступен", StringComparison.OrdinalIgnoreCase);
+        var capabilities = new List<string>();
+
+        capabilities.Add(liveReady ? "live" : "live недоступен");
+        capabilities.Add("playback");
+        capabilities.Add("история");
+        capabilities.Add(CurrentMapPackage is null ? "карты отсутствуют" : "карты");
+
+        CapabilitiesText = $"Доступно сейчас: {string.Join(", ", capabilities)}";
+    }
+
+    private static string TranslateDecoderStatus(string message)
+    {
+        return message
+            .Replace("Decoder process: stopped", "Backend: остановлен", StringComparison.Ordinal)
+            .Replace("Decoder process: starting bundled readsb", "Backend: запуск bundled readsb", StringComparison.Ordinal)
+            .Replace("Decoder process: ready", "Backend: готов", StringComparison.Ordinal)
+            .Replace("Decoder process: emitted errors", "Backend: сообщает об ошибках", StringComparison.Ordinal)
+            .Replace("Decoder process: running", "Backend: работает", StringComparison.Ordinal)
+            .Replace("Decoder process exited", "Backend завершился", StringComparison.Ordinal)
+            .Replace("Decoder process: auto-start disabled", "Backend: автозапуск отключен", StringComparison.Ordinal)
+            .Replace("Decoder process: bundled backend missing", "Backend: bundled executable не найден", StringComparison.Ordinal);
     }
 }

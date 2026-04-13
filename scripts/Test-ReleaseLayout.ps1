@@ -9,9 +9,7 @@ $PublishDir = (Resolve-Path $PublishDir).Path
 $required = @(
     "AdsbObserver.App.exe",
     "backend\readsb\readsb.exe",
-    "backend\readsb\SOURCE.txt",
-    "drivers\rtl-sdr\zadig.exe",
-    "drivers\rtl-sdr\install-driver.cmd"
+    "backend\readsb\SOURCE.txt"
 )
 
 $missing = @()

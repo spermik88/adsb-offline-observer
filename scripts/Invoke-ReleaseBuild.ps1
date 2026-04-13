@@ -6,7 +6,16 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $publishDir = Join-Path $root "src\artifacts\publish\$Runtime"
-$setupScript = Join-Path $root "installer\AdsbObserver.iss"
+$portableRoot = Join-Path $root "src\artifacts\portable\$Runtime"
+$zipPath = Join-Path $root "src\artifacts\portable\AdsbObserver-$Runtime-portable.zip"
+
+if (Test-Path $portableRoot) {
+    Remove-Item -Recurse -Force $portableRoot
+}
+
+if (Test-Path $zipPath) {
+    Remove-Item -Force $zipPath
+}
 
 dotnet publish (Join-Path $root "src\AdsbObserver.App\AdsbObserver.App.csproj") `
     -c $Configuration `
@@ -14,10 +23,12 @@ dotnet publish (Join-Path $root "src\AdsbObserver.App\AdsbObserver.App.csproj") 
 
 & (Join-Path $PSScriptRoot "Test-ReleaseLayout.ps1") -PublishDir $publishDir
 
-$iscc = Get-Command iscc -ErrorAction SilentlyContinue
-if ($null -eq $iscc) {
-    Write-Warning "Inno Setup compiler 'iscc' was not found. Publish layout is ready, but setup was not built."
-    exit 0
+New-Item -ItemType Directory -Force -Path $portableRoot | Out-Null
+Copy-Item -Recurse -Force (Join-Path $publishDir "*") $portableRoot
+foreach ($directory in @("data", "maps", "recordings", "logs")) {
+    New-Item -ItemType Directory -Force -Path (Join-Path $portableRoot $directory) | Out-Null
 }
 
-& $iscc.Source $setupScript
+Compress-Archive -Path (Join-Path $portableRoot "*") -DestinationPath $zipPath
+
+Write-Host "Portable ZIP created:" $zipPath
