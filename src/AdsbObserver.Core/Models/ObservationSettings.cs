@@ -17,9 +17,9 @@ public sealed class ObservationSettings
     public int DecoderPort { get; set; } = 30003;
     public bool DecoderAutoStart { get; set; } = true;
     public bool PreferBundledDecoder { get; set; } = true;
-    public string BundledDecoderRelativePath { get; set; } = @"backend\readsb\readsb.exe";
+    public string BundledDecoderRelativePath { get; set; } = @"backend\dump1090\dump1090.exe";
     public string? DecoderExecutablePath { get; set; }
-    public string? DecoderArguments { get; set; }
+    public string? DecoderArguments { get; set; } = "--config dump1090.cfg";
     public string BundledDriverSetupRelativePath { get; set; } = @"drivers\rtl-sdr\install-driver.cmd";
     public string BundledDriverInfRelativePath { get; set; } = @"drivers\rtl-sdr\rtlsdr-winusb.inf";
     public bool UseSimulationFallback { get; set; } = true;

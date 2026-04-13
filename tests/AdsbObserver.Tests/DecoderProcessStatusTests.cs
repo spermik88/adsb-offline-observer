@@ -37,9 +37,9 @@ public sealed class DecoderProcessStatusTests
             DecoderProcessState.Failed,
             "Backend missing",
             FailureReason: DecoderFailureReason.BackendMissing,
-            ExecutablePath: @"backend\readsb\readsb.exe");
+            ExecutablePath: @"backend\dump1090\dump1090.exe");
 
         Assert.Equal(DecoderFailureReason.BackendMissing, status.FailureReason);
-        Assert.Equal(@"backend\readsb\readsb.exe", status.ExecutablePath);
+        Assert.Equal(@"backend\dump1090\dump1090.exe", status.ExecutablePath);
     }
 }

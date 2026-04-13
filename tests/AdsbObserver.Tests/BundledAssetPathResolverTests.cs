@@ -12,12 +12,12 @@ public sealed class BundledAssetPathResolverTests
         var settings = new ObservationSettings
         {
             PreferBundledDecoder = true,
-            BundledDecoderRelativePath = @"backend\readsb\readsb.exe"
+            BundledDecoderRelativePath = @"backend\dump1090\dump1090.exe"
         };
 
         var resolvedPath = BundledAssetPathResolver.ResolveDecoderExecutable(settings);
 
         Assert.NotNull(resolvedPath);
-        Assert.EndsWith(Path.Combine("backend", "readsb", "readsb.exe"), resolvedPath, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(Path.Combine("backend", "dump1090", "dump1090.exe"), resolvedPath, StringComparison.OrdinalIgnoreCase);
     }
 }

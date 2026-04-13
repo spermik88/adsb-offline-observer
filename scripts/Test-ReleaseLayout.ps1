@@ -8,8 +8,9 @@ $PublishDir = (Resolve-Path $PublishDir).Path
 
 $required = @(
     "AdsbObserver.App.exe",
-    "backend\readsb\readsb.exe",
-    "backend\readsb\SOURCE.txt"
+    "backend\dump1090\dump1090.exe",
+    "backend\dump1090\SOURCE.txt",
+    "backend\dump1090\dump1090.cfg"
 )
 
 $missing = @()
@@ -24,7 +25,7 @@ if ($missing.Count -gt 0) {
     throw "Release layout is incomplete. Missing: $($missing -join ', ')"
 }
 
-$sourcePath = Join-Path $PublishDir "backend\readsb\SOURCE.txt"
+$sourcePath = Join-Path $PublishDir "backend\dump1090\SOURCE.txt"
 $sourceContent = Get-Content $sourcePath -Raw
 $sourcePlaceholders = @(
     "record the exact tag or commit here before release",
@@ -34,7 +35,7 @@ $sourcePlaceholders = @(
 
 $unresolved = $sourcePlaceholders | Where-Object { $sourceContent.Contains($_) }
 if ($unresolved.Count -gt 0) {
-    throw "Release layout is incomplete. backend\readsb\SOURCE.txt still contains release placeholders."
+    throw "Release layout is incomplete. backend\\dump1090\\SOURCE.txt still contains release placeholders."
 }
 
 Write-Host "Release layout validated:" $PublishDir

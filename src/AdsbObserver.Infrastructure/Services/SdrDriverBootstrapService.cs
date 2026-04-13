@@ -11,7 +11,6 @@ public sealed class SdrDriverBootstrapService(IDeviceDetector deviceDetector) : 
         var devices = await deviceDetector.DetectAsync(cancellationToken);
         var compatibleDevices = devices.Where(device => device.IsCompatible).ToList();
         var selectedDevice = ResolveSelectedDevice(compatibleDevices, settings.PreferredDeviceId);
-        var driverReady = compatibleDevices.Any(item => item.IsDriverReady);
         var backendPath = BundledAssetPathResolver.ResolveDecoderExecutable(settings);
         var backendAvailable = !string.IsNullOrWhiteSpace(backendPath) && File.Exists(backendPath);
         var portReachable = await IsPortReachableAsync(settings.DecoderHost, settings.DecoderPort, cancellationToken);
@@ -38,7 +37,7 @@ public sealed class SdrDriverBootstrapService(IDeviceDetector deviceDetector) : 
             return new LiveEnvironmentStatus(
                 LiveEnvironmentIssue.MultipleDevicesDetected,
                 true,
-                driverReady,
+                selectedDevice.IsDriverReady,
                 backendAvailable,
                 portReachable,
                 canBootstrapDriver,
@@ -81,8 +80,8 @@ public sealed class SdrDriverBootstrapService(IDeviceDetector deviceDetector) : 
                 false,
                 true,
                 DriverBootstrapOutcome.NotNeeded,
-                "В portable-пакете отсутствует bundled backend readsb.",
-                "Проверьте, что readsb.exe включен в portable release layout.",
+                "В portable-пакете отсутствует bundled backend dump1090.",
+                "Проверьте, что dump1090.exe включен в portable release layout.",
                 selectedDevice.Name,
                 selectedDevice.DriverName ?? selectedDevice.ServiceName);
         }
@@ -116,7 +115,7 @@ public sealed class SdrDriverBootstrapService(IDeviceDetector deviceDetector) : 
             false,
             DriverBootstrapOutcome.NotNeeded,
             "Live-окружение готово. Bundled backend можно запускать по требованию.",
-            "Нажмите Start Live, чтобы запустить bundled readsb и начать прием ADS-B.",
+            "Нажмите Start Live, чтобы запустить bundled dump1090 и начать прием ADS-B.",
             selectedDevice.Name,
             selectedDevice.DriverName ?? selectedDevice.ServiceName);
     }

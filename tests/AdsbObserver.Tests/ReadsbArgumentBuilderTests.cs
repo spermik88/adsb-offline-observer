@@ -7,7 +7,7 @@ namespace AdsbObserver.Tests;
 public sealed class ReadsbArgumentBuilderTests
 {
     [Fact]
-    public void Build_IncludesCoreReadsbArguments()
+    public void Build_IncludesCoreDump1090Arguments()
     {
         var settings = new ObservationSettings
         {
@@ -23,11 +23,8 @@ public sealed class ReadsbArgumentBuilderTests
         var arguments = ReadsbArgumentBuilder.Build(settings);
 
         Assert.Contains("--net", arguments);
-        Assert.Contains("--device-type \"rtlsdr\"", arguments);
-        Assert.Contains("--net-sbs-port \"30003\"", arguments);
-        Assert.Contains("--gain \"49.6\"", arguments);
-        Assert.Contains("--ppm \"12\"", arguments);
-        Assert.Contains("--sample-rate \"2400000\"", arguments);
+        Assert.Contains("--samplerate \"2400000\"", arguments);
         Assert.Contains("--device \"USB\\VID_0BDA&PID_2838\"", arguments);
+        Assert.Contains("--config dump1090.cfg", arguments);
     }
 }

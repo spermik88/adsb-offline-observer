@@ -19,6 +19,7 @@ if (Test-Path $zipPath) {
 
 dotnet publish (Join-Path $root "src\AdsbObserver.App\AdsbObserver.App.csproj") `
     -c $Configuration `
+    -r $Runtime `
     -p:PublishProfile=Properties\PublishProfiles\win-x64.pubxml
 
 & (Join-Path $PSScriptRoot "Test-ReleaseLayout.ps1") -PublishDir $publishDir

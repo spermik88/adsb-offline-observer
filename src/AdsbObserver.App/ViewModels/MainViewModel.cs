@@ -43,7 +43,7 @@ public sealed class MainViewModel : ObservableObject
     private string _liveReadinessText = "Live-режим: проверка...";
     private string _setupHeadlineText = "Portable first-run";
     private string _setupGuidanceText = "Приложение готовит portable-папки и проверяет, какие режимы доступны.";
-    private string _liveSourceText = "Источник live: bundled readsb";
+    private string _liveSourceText = "Источник live: bundled dump1090";
     private string _mapStatusText = "Карты: не найдены";
     private string _portableStatusText = "Portable storage: проверка...";
     private string _workspaceStatusText = string.Empty;
@@ -310,7 +310,7 @@ public sealed class MainViewModel : ObservableObject
             {
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
-                    StatusText = "Live-прием работает через bundled readsb";
+                    StatusText = "Live-прием работает через bundled dump1090";
                 });
 
                 await foreach (var message in ReadWithFallbackAsync(_liveDecoder, _liveCts.Token))
@@ -597,7 +597,7 @@ public sealed class MainViewModel : ObservableObject
         SetupGuidanceText = environment.Guidance ?? environment.Message;
         LiveSourceText = environment.Issue == LiveEnvironmentIssue.PortBusy
             ? $"Источник live: внешний SBS-1 {DecoderHost}:{DecoderPort}"
-            : "Источник live: bundled readsb";
+            : "Источник live: bundled dump1090";
         IsSetupBlocking = false;
         if (environment.DeviceDetected && !string.IsNullOrWhiteSpace(environment.DeviceName))
         {
@@ -661,7 +661,7 @@ public sealed class MainViewModel : ObservableObject
     {
         return message
             .Replace("Decoder process: stopped", "Backend: остановлен", StringComparison.Ordinal)
-            .Replace("Decoder process: starting bundled readsb", "Backend: запуск bundled readsb", StringComparison.Ordinal)
+            .Replace("Decoder process: starting bundled readsb", "Backend: запуск bundled dump1090", StringComparison.Ordinal)
             .Replace("Decoder process: ready", "Backend: готов", StringComparison.Ordinal)
             .Replace("Decoder process: emitted errors", "Backend: сообщает об ошибках", StringComparison.Ordinal)
             .Replace("Decoder process: running", "Backend: работает", StringComparison.Ordinal)

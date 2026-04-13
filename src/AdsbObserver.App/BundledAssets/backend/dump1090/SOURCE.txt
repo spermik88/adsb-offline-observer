@@ -1,0 +1,5 @@
+Source URL: https://github.com/gvanem/Dump1090
+Exact revision: 018adb77831070268bfdad167553d4135ca5d35d
+Suggested binary origin: external/Dump1090/dump1090.exe
+Upstream note: Windows-native ADS-B decoder with built-in RTL-SDR support and SBS output on port 30003
+SHA256: 5E4F0776150A95F53D7E6D1DA393B2D732BA5B2C44C9DDB94FBFA44E5EAD65E8
