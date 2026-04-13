@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using AdsbObserver.App.ViewModels;
 using AdsbObserver.Core.Interfaces;
@@ -33,8 +33,8 @@ public sealed class MainViewModelTests : IDisposable
                 false,
                 true,
                 DriverBootstrapOutcome.None,
-                "Совместимый RTL-SDR не найден.",
-                "Playback и история доступны без приемника.")));
+                "РЎРѕРІРјРµСЃС‚РёРјС‹Р№ RTL-SDR РЅРµ РЅР°Р№РґРµРЅ.",
+                "Playback Рё РёСЃС‚РѕСЂРёСЏ РґРѕСЃС‚СѓРїРЅС‹ Р±РµР· РїСЂРёРµРјРЅРёРєР°.")));
 
         await viewModel.InitializeAsync();
 
@@ -100,15 +100,15 @@ public sealed class MainViewModelTests : IDisposable
                 false,
                 true,
                 DriverBootstrapOutcome.NotNeeded,
-                "В portable-пакете отсутствует bundled backend dump1090.",
-                "Проверьте, что dump1090.exe включен в portable release layout.",
+                "Р’ portable-РїР°РєРµС‚Рµ РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ bundled backend dump1090.",
+                "РџСЂРѕРІРµСЂСЊС‚Рµ, С‡С‚Рѕ dump1090.exe РІРєР»СЋС‡РµРЅ РІ portable release layout.",
                 "RTL",
                 "WinUSB")));
 
         await viewModel.InitializeAsync();
 
         Assert.Contains("не найден", viewModel.BackendReadinessText, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("bundled dump1090 отсутствует", viewModel.SetupHeadlineText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Bundled dump1090 отсутствует", viewModel.SetupHeadlineText, StringComparison.OrdinalIgnoreCase);
     }
 
     private PortableWorkspacePaths CreateWorkspace()
@@ -168,7 +168,7 @@ public sealed class MainViewModelTests : IDisposable
             false,
             false,
             DriverBootstrapOutcome.NotNeeded,
-            "Диагностика завершена.");
+            "Р”РёР°РіРЅРѕСЃС‚РёРєР° Р·Р°РІРµСЂС€РµРЅР°.");
 
     public void Dispose()
     {
@@ -268,3 +268,4 @@ public sealed class MainViewModelTests : IDisposable
         }
     }
 }
+

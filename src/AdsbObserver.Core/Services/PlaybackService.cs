@@ -4,7 +4,7 @@ namespace AdsbObserver.Core.Services;
 
 public sealed class PlaybackService
 {
-    public IReadOnlyList<PlaybackFrame> BuildFrames(IReadOnlyList<AircraftTrack> tracks)
+    public IReadOnlyList<PlaybackFrame> BuildFrames(IReadOnlyList<AircraftTrack> tracks, int maxTrailPoints = int.MaxValue)
     {
         var events = new SortedDictionary<DateTime, List<AircraftTrackPoint>>();
         var index = new Dictionary<AircraftTrackPoint, string>();
@@ -52,6 +52,10 @@ public sealed class PlaybackService
                 track.HeadingDegrees = point.HeadingDegrees;
                 track.VerticalRateFeetPerMinute = point.VerticalRateFeetPerMinute;
                 track.Points.Add(point);
+                if (track.Points.Count > maxTrailPoints)
+                {
+                    track.Points.RemoveRange(0, track.Points.Count - maxTrailPoints);
+                }
             }
 
             frames.Add(new PlaybackFrame(item.Key, current.Values.Select(CloneTrack).ToList()));

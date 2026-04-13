@@ -6,7 +6,10 @@ public sealed class AircraftTrackerService
 {
     private readonly Dictionary<string, AircraftTrack> _tracks = new(StringComparer.OrdinalIgnoreCase);
 
-    public AircraftTrack ProcessMessage(AircraftMessage message, IReadOnlyDictionary<string, AircraftRecognitionRecord> recognitionLookup)
+    public AircraftTrack ProcessMessage(
+        AircraftMessage message,
+        IReadOnlyDictionary<string, AircraftRecognitionRecord> recognitionLookup,
+        int maxTrailPoints = int.MaxValue)
     {
         if (!_tracks.TryGetValue(message.Icao, out var track))
         {
@@ -49,16 +52,35 @@ public sealed class AircraftTrackerService
             if (track.Points.Count == 0 || track.Points[^1].Latitude != point.Latitude || track.Points[^1].Longitude != point.Longitude)
             {
                 track.Points.Add(point);
+                if (track.Points.Count > maxTrailPoints)
+                {
+                    track.Points.RemoveRange(0, track.Points.Count - maxTrailPoints);
+                }
             }
         }
 
         return track;
     }
 
-    public IReadOnlyList<AircraftTrack> GetActiveTracks(DateTime utcNow, TimeSpan activeWindow)
+    public bool TryGetTrack(string icao, out AircraftTrack? track) => _tracks.TryGetValue(icao, out track);
+
+    public TrackVisualState GetVisualState(AircraftTrack track, DateTime utcNow, TimeSpan activeWindow, TimeSpan staleWindow)
+    {
+        var age = utcNow - track.LastSeenUtc;
+        if (age <= activeWindow)
+        {
+            return TrackVisualState.Active;
+        }
+
+        return age <= activeWindow + staleWindow
+            ? TrackVisualState.Stale
+            : TrackVisualState.Hidden;
+    }
+
+    public IReadOnlyList<AircraftTrack> GetVisibleTracks(DateTime utcNow, TimeSpan activeWindow, TimeSpan staleWindow)
     {
         return _tracks.Values
-            .Where(track => utcNow - track.LastSeenUtc <= activeWindow)
+            .Where(track => GetVisualState(track, utcNow, activeWindow, staleWindow) != TrackVisualState.Hidden)
             .OrderByDescending(track => track.LastSeenUtc)
             .ToList();
     }
