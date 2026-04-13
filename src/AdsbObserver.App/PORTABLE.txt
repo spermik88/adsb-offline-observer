@@ -1,11 +1,21 @@
 Запуск:
-- Откройте AdsbObserver.App.exe из этой папки.
+- Откройте `AdsbObserver.App.exe` из этой папки.
+
+Что умеет portable-версия:
+- live-прием через bundled `dump1090`
+- playback и просмотр сохраненной истории
+- работа с офлайн-картами `MBTiles`
+- хранение данных и логов без установки приложения
+
+Что portable-версия не делает:
+- не устанавливает драйверы RTL-SDR
+- не требует интернета для запуска и playback
+- не хранит рабочие данные внутри versioned-папки приложения
 
 Portable layout:
-- data: общая база и настройки
-- maps: MBTiles-карты
-- recordings: сохраненные треки и экспорт
-- logs: логи portable runtime и dump1090
+- `data`: база и настройки
+- `maps`: офлайн-карты `MBTiles`
+- `recordings`: экспорт и сохраненные данные
+- `logs`: логи portable runtime и `dump1090`
 
-По умолчанию общие данные лежат вне versioned-папки и задаются в portable.layout.json.
-Live-режим использует bundled dump1090 и не устанавливает драйверы RTL-SDR.
+По умолчанию общие данные лежат вне versioned-папки и задаются в `portable.layout.json`.

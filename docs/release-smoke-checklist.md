@@ -1,14 +1,22 @@
 # Release Smoke Checklist
 
-1. Start from a clean Windows machine with .NET Desktop Runtime installed.
-2. Extract `src/artifacts/release/win-x64/AdsbObserver-win-x64-portable.zip` into a new versioned folder.
-3. Confirm `portable.layout.json` points shared writable data outside the versioned app folder.
-4. Launch `AdsbObserver.App.exe` with no internet and no maps installed.
-5. Verify the UI text is readable in Russian and the setup banner explains what is available now.
-6. Verify startup works with no SDR attached and that playback/history remain available.
-7. Put one `.mbtiles` file into `maps/` and confirm the app detects it after `Сканировать карты`.
-8. Start the app with `backend/dump1090/dump1090.exe` removed and confirm live diagnostics report bundled backend missing without a crash.
-9. Connect one RTL-SDR dongle with a working driver and run `Проверить Live`.
-10. Press `Start Live` and verify bundled `dump1090` starts, opens port `30003`, and writes logs into `logs/`.
-11. Stop live mode and start it again; confirm no orphaned backend processes remain.
-12. Occupy port `30003` before launch and confirm the app reports an external SBS-1 source instead of starting a second backend.
+## Автоматическая проверка
+1. Запустите `dotnet test AdsbObserver.slnx`.
+2. Запустите `powershell -ExecutionPolicy Bypass -File scripts\Invoke-ReleaseBuild.ps1`.
+3. Убедитесь, что создан `src/artifacts/release/win-x64/AdsbObserver-win-x64-portable.zip`.
+4. Убедитесь, что smoke-check release layout и ZIP завершился без ошибок.
+
+## Ручная проверка portable-сборки
+1. Подготовьте чистую Windows-машину с установленным .NET Desktop Runtime.
+2. Распакуйте `AdsbObserver-win-x64-portable.zip` в новую versioned-папку.
+3. Проверьте, что `portable.layout.json` указывает shared writable data вне versioned-папки.
+4. Запустите `AdsbObserver.App.exe` без интернета и без карт.
+5. Убедитесь, что русский текст в UI читается нормально и блок состояния объясняет, что доступно сейчас.
+6. Проверьте сценарий без SDR: приложение запускается, `playback` и история доступны, live помечен как недоступный.
+7. Положите один `.mbtiles` в `maps/` и нажмите `Сканировать карты`; приложение должно подхватить карту.
+8. Удалите `backend/dump1090/dump1090.exe` и проверьте, что `Проверить Live` показывает отсутствие bundled backend без падения приложения.
+9. Подключите RTL-SDR с уже установленным рабочим драйвером и нажмите `Проверить Live`.
+10. Нажмите `Start Live` и проверьте, что bundled `dump1090` стартует, открывает `30003` и пишет лог в `logs/`.
+11. Выполните `Stop`, затем снова `Start Live`; убедитесь, что висящих `dump1090` процессов не остается.
+12. Займите `30003` заранее и проверьте, что приложение сообщает о внешнем SBS-1 источнике, а не запускает второй backend.
+13. Повторите запуск без SDR, без карт и без интернета после первого live-сеанса, чтобы убедиться, что portable data переживает перезапуск.
