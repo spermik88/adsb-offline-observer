@@ -153,6 +153,7 @@ public sealed class MainViewModelTests : IDisposable
             mapTileService,
             new AircraftTrackerService(),
             new PlaybackService(),
+            new FakeAiDiagnosticLogService(),
             workspace,
             new StorageCompatibilityStatus(true, false, 1, 1, "OK"));
     }
@@ -266,6 +267,21 @@ public sealed class MainViewModelTests : IDisposable
             await Task.CompletedTask;
             yield break;
         }
+    }
+
+    private sealed class FakeAiDiagnosticLogService : IAiDiagnosticLogService
+    {
+        public List<(string EventType, string Message)> Events { get; } = [];
+        public string? SessionPath { get; set; } = @"C:\temp\logs_for_Ai\session";
+
+        public Task StartSessionAsync(PortableWorkspacePaths workspace, ObservationSettings settings, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task LogEventAsync(string eventType, string severity, string component, string message, object? payload = null, string? actionId = null, string? operationId = null, CancellationToken cancellationToken = default) { Events.Add((eventType, message)); return Task.CompletedTask; }
+        public Task LogExceptionAsync(Exception exception, string component, string message, object? payload = null, string? actionId = null, string? operationId = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task MarkIncidentAsync(string message, object? payload = null, string? actionId = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task UpdateSettingsSnapshotAsync(ObservationSettings settings, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public string? GetCurrentSessionPath() => SessionPath;
+        public void Disable() { }
     }
 }
 

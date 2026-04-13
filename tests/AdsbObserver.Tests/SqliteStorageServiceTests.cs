@@ -26,7 +26,8 @@ public sealed class SqliteStorageServiceTests
             BundledDecoderRelativePath = @"backend\dump1090\dump1090.exe",
             BundledDriverSetupRelativePath = @"drivers\rtl-sdr\install-driver.cmd",
             BundledDriverInfRelativePath = @"drivers\rtl-sdr\rtlsdr-winusb.inf",
-            UseSimulationFallback = false
+            UseSimulationFallback = false,
+            AiLogsEnabled = false
         };
 
         await storage.SaveSettingsAsync(settings, CancellationToken.None);
@@ -42,6 +43,7 @@ public sealed class SqliteStorageServiceTests
         Assert.Equal(settings.BundledDriverSetupRelativePath, loaded.BundledDriverSetupRelativePath);
         Assert.Equal(settings.BundledDriverInfRelativePath, loaded.BundledDriverInfRelativePath);
         Assert.Equal(settings.UseSimulationFallback, loaded.UseSimulationFallback);
+        Assert.Equal(settings.AiLogsEnabled, loaded.AiLogsEnabled);
     }
 
     [Fact]

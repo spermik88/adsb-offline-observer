@@ -41,7 +41,7 @@ public sealed class AiDiagnosticLogService : IAiDiagnosticLogService
             var aiLogsRoot = Path.Combine(workspace.LogsRoot, "logs_for_Ai");
             Directory.CreateDirectory(aiLogsRoot);
 
-            var sessionId = $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N[..8]}";
+            var sessionId = $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..8]}";
             var sessionPath = Path.Combine(aiLogsRoot, sessionId);
             Directory.CreateDirectory(sessionPath);
 

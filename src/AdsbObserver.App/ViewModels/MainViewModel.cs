@@ -1,4 +1,5 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
@@ -21,6 +22,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly IMapTileService _mapTileService;
     private readonly AircraftTrackerService _trackerService;
     private readonly PlaybackCoordinator _playbackCoordinator;
+    private readonly IAiDiagnosticLogService _aiLogService;
     private readonly PortableWorkspacePaths _workspace;
     private readonly StorageCompatibilityStatus _storageCompatibility;
     private readonly DispatcherTimer _playbackTimer = new() { Interval = TimeSpan.FromMilliseconds(350) };
@@ -54,11 +56,14 @@ public sealed class MainViewModel : ObservableObject
     private string _trackMetricsText = "Треки: 0 active / 0 stale / 0 with position";
     private string _sourceSummaryText = "Источник: idle";
     private string _decoderFailureText = "Decoder: явных ошибок нет";
+    private string _aiLogsStatusText = "AI logs: checking...";
+    private string _currentAiLogSessionPath = string.Empty;
     private string _historyIcaoText = string.Empty;
     private string _historyFromText = string.Empty;
     private string _historyToText = string.Empty;
     private bool _historySelectedOnly;
     private bool _historyWithCoordinatesOnly = true;
+    private bool _aiLogsEnabled = true;
     private bool _isLiveRunning;
     private bool _isPlaybackMode;
     private bool _withPositionOnly;
@@ -66,9 +71,9 @@ public sealed class MainViewModel : ObservableObject
     private bool _showSelectedOnly;
     private TrackSortMode _selectedSortMode = TrackSortMode.LastSeen;
 
-    public MainViewModel(IStorageService storageService, IDeviceDetector deviceDetector, IAdsbDecoderAdapter liveDecoder, IAdsbDecoderAdapter simulationDecoder, IDecoderProcessService decoderProcessService, ISdrDriverBootstrapService driverBootstrapService, IRecognitionImportService recognitionImportService, ITrackExportService trackExportService, IMapTileService mapTileService, AircraftTrackerService trackerService, PlaybackService playbackService, PortableWorkspacePaths workspace, StorageCompatibilityStatus storageCompatibility)
+    public MainViewModel(IStorageService storageService, IDeviceDetector deviceDetector, IAdsbDecoderAdapter liveDecoder, IAdsbDecoderAdapter simulationDecoder, IDecoderProcessService decoderProcessService, ISdrDriverBootstrapService driverBootstrapService, IRecognitionImportService recognitionImportService, ITrackExportService trackExportService, IMapTileService mapTileService, AircraftTrackerService trackerService, PlaybackService playbackService, IAiDiagnosticLogService aiLogService, PortableWorkspacePaths workspace, StorageCompatibilityStatus storageCompatibility)
     {
-        _storageService = storageService; _deviceDetector = deviceDetector; _liveDecoder = liveDecoder; _simulationDecoder = simulationDecoder; _decoderProcessService = decoderProcessService; _driverBootstrapService = driverBootstrapService; _recognitionImportService = recognitionImportService; _trackExportService = trackExportService; _mapTileService = mapTileService; _trackerService = trackerService; _playbackCoordinator = new PlaybackCoordinator(playbackService); _workspace = workspace; _storageCompatibility = storageCompatibility;
+        _storageService = storageService; _deviceDetector = deviceDetector; _liveDecoder = liveDecoder; _simulationDecoder = simulationDecoder; _decoderProcessService = decoderProcessService; _driverBootstrapService = driverBootstrapService; _recognitionImportService = recognitionImportService; _trackExportService = trackExportService; _mapTileService = mapTileService; _trackerService = trackerService; _playbackCoordinator = new PlaybackCoordinator(playbackService); _aiLogService = aiLogService; _workspace = workspace; _storageCompatibility = storageCompatibility;
         _decoderProcessService.StatusChanged += (_, status) => _ = InvokeOnUiAsync(() => ApplyDecoderStatus(status));
         StartLiveCommand = new RelayCommand(() => _ = StartLiveAsync(), () => !_isLiveRunning);
         StopLiveCommand = new RelayCommand(() => _ = StopLiveAsync(), () => _isLiveRunning);
@@ -82,6 +87,9 @@ public sealed class MainViewModel : ObservableObject
         ResetCenterCommand = new RelayCommand(ResetCenterToObservationPoint);
         ToggleSelectedOnlyCommand = new RelayCommand(() => ShowSelectedOnly = !ShowSelectedOnly);
         ResetFiltersCommand = new RelayCommand(ResetFilters);
+        OpenAiLogsFolderCommand = new RelayCommand(OpenAiLogsFolder, () => !string.IsNullOrWhiteSpace(CurrentAiLogSessionPath));
+        CopyAiLogsPathCommand = new RelayCommand(CopyAiLogsPath, () => !string.IsNullOrWhiteSpace(CurrentAiLogSessionPath));
+        MarkIncidentCommand = new RelayCommand(() => _ = MarkIncidentAsync());
         _playbackTimer.Tick += (_, _) => AdvancePlayback();
         _uiRefreshTimer.Tick += (_, _) => PublishTrackSnapshot();
     }
@@ -103,6 +111,9 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ResetCenterCommand { get; }
     public RelayCommand ToggleSelectedOnlyCommand { get; }
     public RelayCommand ResetFiltersCommand { get; }
+    public RelayCommand OpenAiLogsFolderCommand { get; }
+    public RelayCommand CopyAiLogsPathCommand { get; }
+    public RelayCommand MarkIncidentCommand { get; }
     public string StatusText { get => _liveStatusState.StatusText; private set { _liveStatusState.SetStatus(value); RaisePropertyChanged(); } }
     public string DeviceStatusText { get => _deviceStatusText; private set => SetProperty(ref _deviceStatusText, value); }
     public string ModeText { get => LiveStatusState.FormatMode(_liveStatusState.Mode); private set { } }
@@ -122,9 +133,11 @@ public sealed class MainViewModel : ObservableObject
     public string TrackMetricsText { get => _trackMetricsText; private set => SetProperty(ref _trackMetricsText, value); }
     public string SourceSummaryText { get => _sourceSummaryText; private set => SetProperty(ref _sourceSummaryText, value); }
     public string DecoderFailureText { get => _decoderFailureText; private set => SetProperty(ref _decoderFailureText, value); }
-    public double CenterLatitude { get => _settings.CenterLatitude; set { _settings.CenterLatitude = value; RaisePropertyChanged(); NotifyVisualStateChanged(); PublishTrackSnapshot(); } }
-    public double CenterLongitude { get => _settings.CenterLongitude; set { _settings.CenterLongitude = value; RaisePropertyChanged(); NotifyVisualStateChanged(); PublishTrackSnapshot(); } }
-    public double RadiusKilometers { get => _settings.DisplayRadiusKilometers; set { _settings.DisplayRadiusKilometers = value; RaisePropertyChanged(); NotifyVisualStateChanged(); PublishTrackSnapshot(); } }
+    public string AiLogsStatusText { get => _aiLogsStatusText; private set => SetProperty(ref _aiLogsStatusText, value); }
+    public string CurrentAiLogSessionPath { get => _currentAiLogSessionPath; private set { if (SetProperty(ref _currentAiLogSessionPath, value)) { OpenAiLogsFolderCommand.RaiseCanExecuteChanged(); CopyAiLogsPathCommand.RaiseCanExecuteChanged(); } } }
+    public double CenterLatitude { get => _settings.CenterLatitude; set { _settings.CenterLatitude = value; RaisePropertyChanged(); NotifyVisualStateChanged(); PublishTrackSnapshot(); LogStructured("ui.state_change", "info", nameof(MainViewModel), "Center latitude changed", new { value }); } }
+    public double CenterLongitude { get => _settings.CenterLongitude; set { _settings.CenterLongitude = value; RaisePropertyChanged(); NotifyVisualStateChanged(); PublishTrackSnapshot(); LogStructured("ui.state_change", "info", nameof(MainViewModel), "Center longitude changed", new { value }); } }
+    public double RadiusKilometers { get => _settings.DisplayRadiusKilometers; set { _settings.DisplayRadiusKilometers = value; RaisePropertyChanged(); NotifyVisualStateChanged(); PublishTrackSnapshot(); LogStructured("ui.state_change", "info", nameof(MainViewModel), "Radius changed", new { value }); } }
     public double Gain { get => _settings.Gain; set { _settings.Gain = value; RaisePropertyChanged(); } }
     public int PpmCorrection { get => _settings.PpmCorrection; set { _settings.PpmCorrection = value; RaisePropertyChanged(); } }
     public int SampleRate { get => _settings.SampleRate; set { _settings.SampleRate = value; RaisePropertyChanged(); } }
@@ -133,27 +146,28 @@ public sealed class MainViewModel : ObservableObject
     public bool UseSimulationFallback { get => _settings.UseSimulationFallback; set { _settings.UseSimulationFallback = value; RaisePropertyChanged(); } }
     public int ActiveTrackCount => Tracks.Count(track => !track.IsStale);
     public bool IsPlaybackMode => _isPlaybackMode;
-    public int SelectedZoom { get => _mapViewState.SelectedZoom; set { if (_mapViewState.SelectedZoom != value) { _mapViewState.SelectedZoom = value; RaisePropertyChanged(); NotifyVisualStateChanged(); } } }
-    public MapLayerType SelectedMapLayer { get => _mapViewState.SelectedMapLayer; set { if (_mapViewState.SelectedMapLayer != value) { _mapViewState.SelectedMapLayer = value; RaisePropertyChanged(); _ = RefreshMapPackagesAsync(); } } }
-    public TrackSortMode SelectedSortMode { get => _selectedSortMode; set { if (SetProperty(ref _selectedSortMode, value)) PublishTrackSnapshot(); } }
-    public string SearchText { get => _searchText; set { if (SetProperty(ref _searchText, value)) PublishTrackSnapshot(); } }
-    public bool WithPositionOnly { get => _withPositionOnly; set { if (SetProperty(ref _withPositionOnly, value)) PublishTrackSnapshot(); } }
-    public bool AirborneOnly { get => _airborneOnly; set { if (SetProperty(ref _airborneOnly, value)) PublishTrackSnapshot(); } }
-    public bool ShowSelectedOnly { get => _showSelectedOnly; set { if (SetProperty(ref _showSelectedOnly, value)) PublishTrackSnapshot(); } }
+    public int SelectedZoom { get => _mapViewState.SelectedZoom; set { if (_mapViewState.SelectedZoom != value) { _mapViewState.SelectedZoom = value; RaisePropertyChanged(); NotifyVisualStateChanged(); LogStructured("ui.state_change", "info", nameof(MainViewModel), "Zoom changed", new { value }); } } }
+    public MapLayerType SelectedMapLayer { get => _mapViewState.SelectedMapLayer; set { if (_mapViewState.SelectedMapLayer != value) { _mapViewState.SelectedMapLayer = value; RaisePropertyChanged(); LogStructured("ui.state_change", "info", nameof(MainViewModel), "Map layer changed", new { value }); _ = RefreshMapPackagesAsync(); } } }
+    public TrackSortMode SelectedSortMode { get => _selectedSortMode; set { if (SetProperty(ref _selectedSortMode, value)) { PublishTrackSnapshot(); LogStructured("filters.changed", "info", nameof(MainViewModel), "Sort mode changed", new { value }); } } }
+    public string SearchText { get => _searchText; set { if (SetProperty(ref _searchText, value)) { PublishTrackSnapshot(); LogStructured("filters.changed", "info", nameof(MainViewModel), "Search text changed", new { value }); } } }
+    public bool WithPositionOnly { get => _withPositionOnly; set { if (SetProperty(ref _withPositionOnly, value)) { PublishTrackSnapshot(); LogStructured("filters.changed", "info", nameof(MainViewModel), "With position changed", new { value }); } } }
+    public bool AirborneOnly { get => _airborneOnly; set { if (SetProperty(ref _airborneOnly, value)) { PublishTrackSnapshot(); LogStructured("filters.changed", "info", nameof(MainViewModel), "Airborne only changed", new { value }); } } }
+    public bool ShowSelectedOnly { get => _showSelectedOnly; set { if (SetProperty(ref _showSelectedOnly, value)) { PublishTrackSnapshot(); LogStructured("filters.changed", "info", nameof(MainViewModel), "Show selected only changed", new { value }); } } }
     public string MinAltitudeText { get => _minAltitudeText; set { if (SetProperty(ref _minAltitudeText, value)) PublishTrackSnapshot(); } }
     public string MaxAltitudeText { get => _maxAltitudeText; set { if (SetProperty(ref _maxAltitudeText, value)) PublishTrackSnapshot(); } }
     public string MinSpeedText { get => _minSpeedText; set { if (SetProperty(ref _minSpeedText, value)) PublishTrackSnapshot(); } }
     public string MaxSpeedText { get => _maxSpeedText; set { if (SetProperty(ref _maxSpeedText, value)) PublishTrackSnapshot(); } }
     public string MaxDistanceText { get => _maxDistanceText; set { if (SetProperty(ref _maxDistanceText, value)) PublishTrackSnapshot(); } }
-    public string HistoryIcaoText { get => _historyIcaoText; set => SetProperty(ref _historyIcaoText, value); }
-    public string HistoryFromText { get => _historyFromText; set => SetProperty(ref _historyFromText, value); }
-    public string HistoryToText { get => _historyToText; set => SetProperty(ref _historyToText, value); }
-    public bool HistorySelectedOnly { get => _historySelectedOnly; set => SetProperty(ref _historySelectedOnly, value); }
-    public bool HistoryWithCoordinatesOnly { get => _historyWithCoordinatesOnly; set => SetProperty(ref _historyWithCoordinatesOnly, value); }
+    public string HistoryIcaoText { get => _historyIcaoText; set { if (SetProperty(ref _historyIcaoText, value)) LogStructured("filters.changed", "info", nameof(MainViewModel), "History ICAO changed", new { value }); } }
+    public string HistoryFromText { get => _historyFromText; set { if (SetProperty(ref _historyFromText, value)) LogStructured("filters.changed", "info", nameof(MainViewModel), "History from changed", new { value }); } }
+    public string HistoryToText { get => _historyToText; set { if (SetProperty(ref _historyToText, value)) LogStructured("filters.changed", "info", nameof(MainViewModel), "History to changed", new { value }); } }
+    public bool HistorySelectedOnly { get => _historySelectedOnly; set { if (SetProperty(ref _historySelectedOnly, value)) LogStructured("filters.changed", "info", nameof(MainViewModel), "History selected only changed", new { value }); } }
+    public bool HistoryWithCoordinatesOnly { get => _historyWithCoordinatesOnly; set { if (SetProperty(ref _historyWithCoordinatesOnly, value)) LogStructured("filters.changed", "info", nameof(MainViewModel), "History coordinates only changed", new { value }); } }
+    public bool AiLogsEnabled { get => _aiLogsEnabled; set { if (SetProperty(ref _aiLogsEnabled, value)) { _settings.AiLogsEnabled = value; UpdateAiLogStatus(); LogStructured("ui.state_change", "info", nameof(MainViewModel), "AI logs enabled changed", new { value }); } } }
     public MapPackageInfo? CurrentMapPackage { get => _mapViewState.CurrentMapPackage; private set { if (!EqualityComparer<MapPackageInfo?>.Default.Equals(_mapViewState.CurrentMapPackage, value)) { _mapViewState.CurrentMapPackage = value; RaisePropertyChanged(); NotifyVisualStateChanged(); } } }
     public string? SelectedDeviceId { get => _settings.PreferredDeviceId; set { if (_settings.PreferredDeviceId != value) { _settings.PreferredDeviceId = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(SelectedDeviceSummary)); } } }
     public string SelectedDeviceSummary => string.IsNullOrWhiteSpace(_settings.PreferredDeviceId) ? "Предпочтительный RTL-SDR не выбран" : _availableDevices.FirstOrDefault(item => item.DeviceId == _settings.PreferredDeviceId) is { } device ? $"Выбрано устройство: {device.Name}" : "Сохранённый RTL-SDR сейчас не подключён";
-    public TrackViewModel? SelectedTrack { get => _trackListState.SelectedTrack; set { if (!ReferenceEquals(_trackListState.SelectedTrack, value)) { _trackListState.SetSelectedTrack(value); RaisePropertyChanged(); CenterOnSelectedCommand.RaiseCanExecuteChanged(); PublishTrackSnapshot(); } } }
+    public TrackViewModel? SelectedTrack { get => _trackListState.SelectedTrack; set { if (!ReferenceEquals(_trackListState.SelectedTrack, value)) { _trackListState.SetSelectedTrack(value); RaisePropertyChanged(); CenterOnSelectedCommand.RaiseCanExecuteChanged(); PublishTrackSnapshot(); LogStructured("selection.changed", "info", nameof(MainViewModel), "Selected track changed", new { Icao = value?.Icao }); } } }
 
     public async Task InitializeAsync()
     {
@@ -162,10 +176,12 @@ public sealed class MainViewModel : ObservableObject
         _selectedSortMode = Enum.TryParse<TrackSortMode>(_settings.DefaultSortMode, true, out var sortMode) ? sortMode : TrackSortMode.LastSeen;
         _withPositionOnly = _settings.DefaultFilterWithPositionOnly;
         _airborneOnly = _settings.DefaultFilterAirborneOnly;
+        _aiLogsEnabled = _settings.AiLogsEnabled;
         _mapViewState.CaptureObservationCenter(_settings.CenterLatitude, _settings.CenterLongitude);
-        RaisePropertyChanged(nameof(CenterLatitude)); RaisePropertyChanged(nameof(CenterLongitude)); RaisePropertyChanged(nameof(RadiusKilometers)); RaisePropertyChanged(nameof(SelectedZoom)); RaisePropertyChanged(nameof(Gain)); RaisePropertyChanged(nameof(PpmCorrection)); RaisePropertyChanged(nameof(SampleRate)); RaisePropertyChanged(nameof(DecoderHost)); RaisePropertyChanged(nameof(DecoderPort)); RaisePropertyChanged(nameof(UseSimulationFallback)); RaisePropertyChanged(nameof(SelectedDeviceId)); RaisePropertyChanged(nameof(SelectedDeviceSummary));
+        RaisePropertyChanged(nameof(CenterLatitude)); RaisePropertyChanged(nameof(CenterLongitude)); RaisePropertyChanged(nameof(RadiusKilometers)); RaisePropertyChanged(nameof(SelectedZoom)); RaisePropertyChanged(nameof(Gain)); RaisePropertyChanged(nameof(PpmCorrection)); RaisePropertyChanged(nameof(SampleRate)); RaisePropertyChanged(nameof(DecoderHost)); RaisePropertyChanged(nameof(DecoderPort)); RaisePropertyChanged(nameof(UseSimulationFallback)); RaisePropertyChanged(nameof(SelectedDeviceId)); RaisePropertyChanged(nameof(SelectedDeviceSummary)); RaisePropertyChanged(nameof(AiLogsEnabled));
         PortableStatusText = $"Portable storage: {_storageCompatibility.Message}";
         WorkspaceStatusText = $"Папки: data={_workspace.DataRoot}, maps={_workspace.MapsRoot}, recordings={_workspace.RecordingsRoot}, logs={_workspace.LogsRoot}";
+        UpdateAiLogStatus();
         _recognitionLookup = await _storageService.GetRecognitionLookupAsync(CancellationToken.None);
         RecognitionStatusText = $"Распознавание: {_recognitionLookup.Count} записей";
         await RefreshMapPackagesAsync();
@@ -176,11 +192,13 @@ public sealed class MainViewModel : ObservableObject
         PublishTrackSnapshot();
         _uiRefreshTimer.Start();
         LogEvent("Приложение инициализировано");
+        LogStructured("app.session", "info", nameof(MainViewModel), "MainViewModel initialized", new { AiLogsEnabled, CurrentAiLogSessionPath });
         StatusText = "Клиент готов";
     }
 
     public async Task RefreshDevicesAsync()
     {
+        var actionId = BeginAction("RefreshDevices", new { SelectedDeviceId });
         try
         {
             var devices = await _deviceDetector.DetectAsync(CancellationToken.None);
@@ -191,27 +209,31 @@ public sealed class MainViewModel : ObservableObject
             RaisePropertyChanged(nameof(SelectedDeviceId));
             RaisePropertyChanged(nameof(SelectedDeviceSummary));
             await RefreshEnvironmentStatusAsync();
+            LogStructured("ui.command", "info", nameof(MainViewModel), "Refresh devices completed", new { count = devices.Count }, actionId);
         }
         catch (Exception ex)
         {
             DeviceStatusText = $"RTL-SDR: ошибка проверки ({ex.Message})";
             LiveReadinessText = "Live: недоступен";
             UpdateCapabilitiesText();
+            await _aiLogService.LogExceptionAsync(ex, nameof(MainViewModel), "Refresh devices failed", actionId: actionId);
         }
     }
 
     public async Task StartLiveAsync()
     {
+        var actionId = BeginAction("StartLive", new { SelectedDeviceId, DecoderHost, DecoderPort, UseSimulationFallback });
         if (_isLiveRunning) return;
         PausePlayback();
         _isPlaybackMode = false;
         RaisePropertyChanged(nameof(IsPlaybackMode));
         _liveCts = new CancellationTokenSource();
         await _storageService.SaveSettingsAsync(_settings, _liveCts.Token);
+        await _aiLogService.UpdateSettingsSnapshotAsync(_settings, _liveCts.Token);
         var environment = await PrepareLiveEnvironmentAsync(_liveCts.Token);
-        if (!environment.CanStartLive) { _liveCts.Dispose(); _liveCts = null; return; }
+        if (!environment.CanStartLive) { LogStructured("live.environment", "warning", nameof(MainViewModel), "Start live blocked by environment", new { environment.Issue, environment.Message }, actionId); _liveCts.Dispose(); _liveCts = null; return; }
         var decoderStatus = await _decoderProcessService.StartAsync(_settings, _liveCts.Token);
-        if (!decoderStatus.IsReady) { StatusText = TranslateDecoderStatus(decoderStatus.Message); await RefreshEnvironmentStatusAsync(); _liveCts.Dispose(); _liveCts = null; return; }
+        if (!decoderStatus.IsReady) { StatusText = TranslateDecoderStatus(decoderStatus.Message); LogStructured("live.decoder", "error", nameof(MainViewModel), "Decoder failed to become ready", new { decoderStatus.FailureReason, decoderStatus.Message, decoderStatus.LastErrorLine }, actionId); await RefreshEnvironmentStatusAsync(); _liveCts.Dispose(); _liveCts = null; return; }
         _isLiveRunning = true;
         StartLiveCommand.RaiseCanExecuteChanged();
         StopLiveCommand.RaiseCanExecuteChanged();
@@ -220,9 +242,11 @@ public sealed class MainViewModel : ObservableObject
         RaisePropertyChanged(nameof(LiveSourceText));
         StatusText = "Запуск live-приёма...";
         LogEvent("Live запущен");
+        LogStructured("ui.command", "info", nameof(MainViewModel), "Start live completed", new { decoderStatus.IsReady, decoderStatus.PortReachable }, actionId);
         UpdateCapabilitiesText();
         _ = Task.Run(async () =>
         {
+            var operationId = $"live-{Guid.NewGuid().ToString("N")[..8]}";
             try
             {
                 await InvokeOnUiAsync(() => StatusText = "Live-приём работает через bundled dump1090");
@@ -245,7 +269,11 @@ public sealed class MainViewModel : ObservableObject
             catch (Exception ex)
             {
                 var fallbackUsed = _settings.UseSimulationFallback && _liveCts is not null && !_liveCts.IsCancellationRequested && await TryRunSimulationFallbackAsync(_liveCts.Token);
-                if (!fallbackUsed) await InvokeOnUiAsync(() => { StatusText = $"Ошибка live-приёма: {ex.Message}"; LogEvent($"Ошибка decoder: {ex.Message}"); });
+                if (!fallbackUsed)
+                {
+                    await _aiLogService.LogExceptionAsync(ex, nameof(MainViewModel), "Live loop failed", actionId: actionId, operationId: operationId);
+                    await InvokeOnUiAsync(() => { StatusText = $"Ошибка live-приёма: {ex.Message}"; LogEvent($"Ошибка decoder: {ex.Message}"); });
+                }
             }
             finally
             {
@@ -254,14 +282,11 @@ public sealed class MainViewModel : ObservableObject
                     _isLiveRunning = false;
                     StartLiveCommand.RaiseCanExecuteChanged();
                     StopLiveCommand.RaiseCanExecuteChanged();
-                    if (!_isPlaybackMode)
-                    {
-                        _liveStatusState.SetMode(AppMode.Idle);
-                        RaisePropertyChanged(nameof(ModeText));
-                    }
+                    if (!_isPlaybackMode) { _liveStatusState.SetMode(AppMode.Idle); RaisePropertyChanged(nameof(ModeText)); }
                     PublishTrackSnapshot();
                     UpdateCapabilitiesText();
                 });
+                await _aiLogService.LogEventAsync("live.decoder", "info", nameof(MainViewModel), "Live loop stopped", new { mode = _liveStatusState.Mode.ToString() }, actionId, operationId);
                 await _decoderProcessService.StopAsync(CancellationToken.None);
                 await RefreshEnvironmentStatusAsync();
                 LogEvent("Live остановлен");
@@ -271,6 +296,7 @@ public sealed class MainViewModel : ObservableObject
 
     public Task StopLiveAsync()
     {
+        LogStructured("ui.command", "info", nameof(MainViewModel), "Stop live requested");
         _liveCts?.Cancel();
         _isLiveRunning = false;
         StartLiveCommand.RaiseCanExecuteChanged();
@@ -285,45 +311,52 @@ public sealed class MainViewModel : ObservableObject
 
     public async Task<int> ImportRecognitionAsync(string path)
     {
+        var actionId = BeginAction("ImportRecognition", new { path });
         var imported = await _recognitionImportService.ImportAsync(path, CancellationToken.None);
         _recognitionLookup = await _storageService.GetRecognitionLookupAsync(CancellationToken.None);
         RecognitionStatusText = $"Распознавание: {_recognitionLookup.Count} записей";
         StatusText = $"Импортировано записей: {imported}";
         LogEvent($"Импорт recognition: {Path.GetFileName(path)}");
+        LogStructured("ui.command", "info", nameof(MainViewModel), "Import recognition completed", new { path, imported }, actionId);
         return imported;
     }
 
     public async Task ExportTracksAsync(string path)
     {
         var filter = BuildHistoryFilter();
+        var actionId = BeginAction("ExportTracks", new { path, filter.Icao, filter.FromUtc, filter.ToUtc, filter.WithCoordinatesOnly });
         await _trackExportService.ExportAsync(path, filter.Icao, filter.FromUtc, filter.ToUtc, filter.WithCoordinatesOnly, CancellationToken.None);
         StatusText = $"CSV экспортирован: {path}";
         LogEvent($"CSV экспорт: {Path.GetFileName(path)}");
+        LogStructured("export", "info", nameof(MainViewModel), "Export CSV completed", new { path, filter.Icao, filter.FromUtc, filter.ToUtc, filter.WithCoordinatesOnly }, actionId);
     }
 
     public async Task StartPlaybackAsync()
     {
+        var actionId = BeginAction("StartPlayback", new { HistoryIcaoText, HistoryFromText, HistoryToText, HistorySelectedOnly, HistoryWithCoordinatesOnly });
         await StopLiveAsync();
         var filter = BuildHistoryFilter();
         var tracks = await _storageService.GetStoredTracksAsync(filter.FromUtc, filter.ToUtc, filter.Icao, CancellationToken.None);
         if (filter.WithCoordinatesOnly) tracks = tracks.Where(track => track.Points.Count > 0).ToList();
-        if (tracks.Count == 0) { StatusText = "Нет архивных треков для playback"; return; }
+        if (tracks.Count == 0) { StatusText = "Нет архивных треков для playback"; LogStructured("playback", "warning", nameof(MainViewModel), "Playback has no matching tracks", new { filter.Icao, filter.FromUtc, filter.ToUtc, filter.WithCoordinatesOnly }, actionId); return; }
         _playbackCoordinator.Load(tracks, _settings.MaxTrailPoints);
-        if (!_playbackCoordinator.HasFrames) { StatusText = "В истории нет точек с координатами для playback"; return; }
+        if (!_playbackCoordinator.HasFrames) { StatusText = "В истории нет точек с координатами для playback"; LogStructured("playback", "warning", nameof(MainViewModel), "Playback has no frames", new { tracks = tracks.Count }, actionId); return; }
         _isPlaybackMode = true;
         RaisePropertyChanged(nameof(IsPlaybackMode));
         _liveStatusState.SetMode(AppMode.Playback);
         RaisePropertyChanged(nameof(ModeText));
         StatusText = "Playback запущен";
         LogEvent("Playback запущен");
+        LogStructured("playback", "info", nameof(MainViewModel), "Playback started", new { tracks = tracks.Count }, actionId);
         UpdateCapabilitiesText();
         _playbackTimer.Start();
     }
 
-    public void PausePlayback() { _playbackTimer.Stop(); if (_isPlaybackMode) { StatusText = "Playback на паузе"; LogEvent("Playback на паузе"); } }
+    public void PausePlayback() { _playbackTimer.Stop(); if (_isPlaybackMode) { StatusText = "Playback на паузе"; LogEvent("Playback на паузе"); LogStructured("playback", "info", nameof(MainViewModel), "Playback paused"); } }
 
     public async Task RefreshMapPackagesAsync()
     {
+        var actionId = BeginAction("RefreshMapPackages", new { SelectedMapLayer });
         Directory.CreateDirectory(_workspace.MapsRoot);
         var packages = new List<MapPackageInfo>();
         foreach (var filePath in Directory.EnumerateFiles(_workspace.MapsRoot, "*.mbtiles", SearchOption.TopDirectoryOnly))
@@ -338,6 +371,7 @@ public sealed class MainViewModel : ObservableObject
         MapStatusText = CurrentMapPackage is null ? $"Карты: не найдены в {_workspace.MapsRoot}. Используется фоновая сетка." : $"Карты: {CurrentMapPackage.Name}";
         UpdateCapabilitiesText();
         NotifyVisualStateChanged();
+        LogStructured("map.render", "info", nameof(MainViewModel), "Map packages refreshed", new { count = packages.Count, CurrentMapPackage?.Id, CurrentMapPackage?.Name }, actionId);
     }
 
     public async Task SaveSettingsAsync()
@@ -345,16 +379,21 @@ public sealed class MainViewModel : ObservableObject
         _settings.DefaultSortMode = SelectedSortMode.ToString();
         _settings.DefaultFilterWithPositionOnly = WithPositionOnly;
         _settings.DefaultFilterAirborneOnly = AirborneOnly;
+        _settings.AiLogsEnabled = AiLogsEnabled;
         _mapViewState.CaptureObservationCenter(_settings.CenterLatitude, _settings.CenterLongitude);
         await _storageService.SaveSettingsAsync(_settings, CancellationToken.None);
+        await _aiLogService.UpdateSettingsSnapshotAsync(_settings, CancellationToken.None);
         await RefreshEnvironmentStatusAsync();
+        UpdateAiLogStatus();
         StatusText = "Настройки сохранены";
         LogEvent("Настройки сохранены");
+        LogStructured("ui.command", "info", nameof(MainViewModel), "Settings saved", new { AiLogsEnabled, SelectedSortMode, WithPositionOnly, AirborneOnly });
     }
 
     public async Task<byte[]?> GetTileBytesAsync(int zoom, int x, int y, CancellationToken cancellationToken) => CurrentMapPackage is null ? null : await _mapTileService.GetTileBytesAsync(CurrentMapPackage, zoom, x, y, cancellationToken);
-    public async Task<LiveEnvironmentStatus> PrepareLiveEnvironmentAsync(CancellationToken cancellationToken = default) { StatusText = "Диагностика live-режима..."; var environment = await _driverBootstrapService.EnsureReadyAsync(_settings, cancellationToken); ApplyEnvironmentStatus(environment); StatusText = environment.Message; UpdateCapabilitiesText(); return environment; }
+    public async Task<LiveEnvironmentStatus> PrepareLiveEnvironmentAsync(CancellationToken cancellationToken = default) { StatusText = "Диагностика live-режима..."; var environment = await _driverBootstrapService.EnsureReadyAsync(_settings, cancellationToken); ApplyEnvironmentStatus(environment); StatusText = environment.Message; UpdateCapabilitiesText(); LogStructured("live.environment", environment.CanStartLive ? "info" : "warning", nameof(MainViewModel), "Live environment checked", new { environment.Issue, environment.Message, environment.Guidance }); return environment; }
     public bool ShouldDisplayLabel(TrackViewModel track) => track.IsSelected || (track.HasPosition && !track.IsStale && SelectedZoom >= 9);
+    public Task LogExternalEventAsync(string eventType, string severity, string component, string message, object? payload = null, string? actionId = null, string? operationId = null) => _aiLogService.LogEventAsync(eventType, severity, component, message, payload, actionId, operationId);
 
     private async IAsyncEnumerable<AircraftMessage> ReadWithFallbackAsync(IAdsbDecoderAdapter preferredAdapter, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
@@ -375,13 +414,14 @@ public sealed class MainViewModel : ObservableObject
             RaisePropertyChanged(nameof(ModeText));
             RaisePropertyChanged(nameof(LiveSourceText));
             LogEvent("Активирован simulation fallback");
+            LogStructured("live.decoder", "warning", nameof(MainViewModel), "Simulation fallback activated");
         });
         await foreach (var message in _simulationDecoder.ReadMessagesAsync(_settings, cancellationToken)) yield return message;
     }
 
     private void AdvancePlayback()
     {
-        if (!_playbackCoordinator.TryGetNextFrame(out var frame) || frame is null) { _playbackTimer.Stop(); _isPlaybackMode = false; RaisePropertyChanged(nameof(IsPlaybackMode)); StatusText = "Playback завершён"; _liveStatusState.SetMode(AppMode.Idle); RaisePropertyChanged(nameof(ModeText)); LogEvent("Playback завершён"); return; }
+        if (!_playbackCoordinator.TryGetNextFrame(out var frame) || frame is null) { _playbackTimer.Stop(); _isPlaybackMode = false; RaisePropertyChanged(nameof(IsPlaybackMode)); StatusText = "Playback завершён"; _liveStatusState.SetMode(AppMode.Idle); RaisePropertyChanged(nameof(ModeText)); LogEvent("Playback завершён"); LogStructured("playback", "info", nameof(MainViewModel), "Playback completed"); return; }
         ReplaceDisplayedTracks(frame.Tracks, frame.TimestampUtc);
         RaisePropertyChanged(nameof(ModeText));
     }
@@ -401,6 +441,7 @@ public sealed class MainViewModel : ObservableObject
         RaisePropertyChanged(nameof(SelectedDeviceSummary));
         UpdateCapabilitiesText(environment);
         UpdateSourceSummary();
+        LogStructured("live.environment", environment.CanStartLive ? "info" : "warning", nameof(MainViewModel), "Environment status applied", new { environment.Issue, environment.Message, environment.DeviceName });
     }
 
     private async Task<bool> TryRunSimulationFallbackAsync(CancellationToken cancellationToken)
@@ -470,9 +511,9 @@ public sealed class MainViewModel : ObservableObject
         RaisePropertyChanged(nameof(MessagesPerSecondText));
     }
 
-    private void CenterOnSelectedTrack() { if (SelectedTrack?.Model.Latitude is double lat && SelectedTrack.Model.Longitude is double lon) { CenterLatitude = lat; CenterLongitude = lon; StatusText = $"Карта центрирована на {SelectedTrack.Icao}"; } }
-    private void ResetCenterToObservationPoint() { var home = _mapViewState.GetHomeCenter(); CenterLatitude = home.Latitude; CenterLongitude = home.Longitude; StatusText = "Карта возвращена к observation center"; }
-    private void ResetFilters() { SearchText = string.Empty; WithPositionOnly = false; AirborneOnly = false; ShowSelectedOnly = false; MinAltitudeText = string.Empty; MaxAltitudeText = string.Empty; MinSpeedText = string.Empty; MaxSpeedText = string.Empty; MaxDistanceText = string.Empty; StatusText = "Фильтры сброшены"; }
+    private void CenterOnSelectedTrack() { if (SelectedTrack?.Model.Latitude is double lat && SelectedTrack.Model.Longitude is double lon) { CenterLatitude = lat; CenterLongitude = lon; StatusText = $"Карта центрирована на {SelectedTrack.Icao}"; LogStructured("ui.command", "info", nameof(MainViewModel), "Center on selected", new { SelectedTrack.Icao, lat, lon }); } }
+    private void ResetCenterToObservationPoint() { var home = _mapViewState.GetHomeCenter(); CenterLatitude = home.Latitude; CenterLongitude = home.Longitude; StatusText = "Карта возвращена к observation center"; LogStructured("ui.command", "info", nameof(MainViewModel), "Reset center", new { home.Latitude, home.Longitude }); }
+    private void ResetFilters() { SearchText = string.Empty; WithPositionOnly = false; AirborneOnly = false; ShowSelectedOnly = false; MinAltitudeText = string.Empty; MaxAltitudeText = string.Empty; MinSpeedText = string.Empty; MaxSpeedText = string.Empty; MaxDistanceText = string.Empty; StatusText = "Фильтры сброшены"; LogStructured("filters.changed", "info", nameof(MainViewModel), "Filters reset"); }
     private void LogEvent(string message) { _liveStatusState.LogEvent(message); RaisePropertyChanged(nameof(RecentEvents)); }
     private void NotifyVisualStateChanged() => VisualStateChanged?.Invoke(this, EventArgs.Empty);
     private void ApplyDecoderStatus(DecoderProcessStatus status)
@@ -480,6 +521,7 @@ public sealed class MainViewModel : ObservableObject
         DecoderStatusText = TranslateDecoderStatus(status.Message);
         DecoderFailureText = TranslateDecoderFailure(status);
         UpdateSourceSummary(status);
+        LogStructured("live.decoder", status.State == DecoderProcessState.Failed ? "error" : "info", nameof(MainViewModel), "Decoder status changed", new { status.State, status.FailureReason, status.Message, status.LastErrorLine, status.LastOutputLine });
     }
 
     private void UpdateSourceSummary(DecoderProcessStatus? status = null)
@@ -501,29 +543,14 @@ public sealed class MainViewModel : ObservableObject
     {
         var selectedIcao = HistorySelectedOnly ? SelectedTrack?.Icao : null;
         var explicitIcao = string.IsNullOrWhiteSpace(HistoryIcaoText) ? null : HistoryIcaoText.Trim().ToUpperInvariant();
-        return new HistoryFilter(
-            selectedIcao ?? explicitIcao,
-            ParseHistoryDate(HistoryFromText, isEndBoundary: false),
-            ParseHistoryDate(HistoryToText, isEndBoundary: true),
-            HistoryWithCoordinatesOnly);
+        return new HistoryFilter(selectedIcao ?? explicitIcao, ParseHistoryDate(HistoryFromText, isEndBoundary: false), ParseHistoryDate(HistoryToText, isEndBoundary: true), HistoryWithCoordinatesOnly);
     }
 
     private static DateTime? ParseHistoryDate(string text, bool isEndBoundary)
     {
-        if (string.IsNullOrWhiteSpace(text) || !DateTime.TryParse(text, out var parsed))
-        {
-            return null;
-        }
-
-        if (parsed.TimeOfDay == TimeSpan.Zero)
-        {
-            var localBoundary = isEndBoundary ? parsed.Date.AddDays(1).AddTicks(-1) : parsed.Date;
-            return DateTime.SpecifyKind(localBoundary, DateTimeKind.Local).ToUniversalTime();
-        }
-
-        return parsed.Kind == DateTimeKind.Unspecified
-            ? DateTime.SpecifyKind(parsed, DateTimeKind.Local).ToUniversalTime()
-            : parsed.ToUniversalTime();
+        if (string.IsNullOrWhiteSpace(text) || !DateTime.TryParse(text, out var parsed)) return null;
+        if (parsed.TimeOfDay == TimeSpan.Zero) { var localBoundary = isEndBoundary ? parsed.Date.AddDays(1).AddTicks(-1) : parsed.Date; return DateTime.SpecifyKind(localBoundary, DateTimeKind.Local).ToUniversalTime(); }
+        return parsed.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(parsed, DateTimeKind.Local).ToUniversalTime() : parsed.ToUniversalTime();
     }
 
     private static string TranslateDecoderFailure(DecoderProcessStatus status) => status.FailureReason switch
@@ -543,8 +570,12 @@ public sealed class MainViewModel : ObservableObject
     private static double? ParseNullableDouble(string text) => double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var invariant) ? invariant : double.TryParse(text, out var current) ? current : null;
     private static string TranslateDecoderStatus(string message) => message.Replace("dump1090: stopped", "Источник: остановлен", StringComparison.Ordinal).Replace("dump1090: starting bundled backend", "Источник: запуск bundled dump1090", StringComparison.Ordinal).Replace("dump1090: ready", "Источник: decoder готов", StringComparison.Ordinal).Replace("dump1090: emitted errors", "Источник: backend сообщает об ошибках", StringComparison.Ordinal).Replace("dump1090: running", "Источник: backend работает", StringComparison.Ordinal).Replace("dump1090 exited", "Источник: backend завершился", StringComparison.Ordinal).Replace("dump1090: auto-start disabled", "Источник: автозапуск отключён", StringComparison.Ordinal).Replace("dump1090: bundled backend missing", "Источник: bundled dump1090 не найден", StringComparison.Ordinal);
     private static Task InvokeOnUiAsync(Action action) { var dispatcher = Application.Current?.Dispatcher; if (dispatcher is null) { action(); return Task.CompletedTask; } return dispatcher.InvokeAsync(action).Task; }
+    private string BeginAction(string name, object? payload = null) { var actionId = $"{name}-{Guid.NewGuid().ToString("N")[..8]}"; LogStructured("ui.command", "info", nameof(MainViewModel), $"{name} started", payload, actionId); return actionId; }
+    private void LogStructured(string eventType, string severity, string component, string message, object? payload = null, string? actionId = null, string? operationId = null) { _ = _aiLogService.LogEventAsync(eventType, severity, component, message, payload, actionId, operationId); }
+    private void UpdateAiLogStatus() { CurrentAiLogSessionPath = _aiLogService.GetCurrentSessionPath() ?? string.Empty; AiLogsStatusText = AiLogsEnabled ? string.IsNullOrWhiteSpace(CurrentAiLogSessionPath) ? "AI logs: enabled, session unavailable" : $"AI logs: enabled ({CurrentAiLogSessionPath})" : "AI logs: disabled"; }
+    private void OpenAiLogsFolder() { if (string.IsNullOrWhiteSpace(CurrentAiLogSessionPath)) return; Process.Start(new ProcessStartInfo { FileName = CurrentAiLogSessionPath, UseShellExecute = true }); LogStructured("ui.command", "info", nameof(MainViewModel), "Opened AI logs folder", new { CurrentAiLogSessionPath }); }
+    private void CopyAiLogsPath() { if (string.IsNullOrWhiteSpace(CurrentAiLogSessionPath)) return; Clipboard.SetText(CurrentAiLogSessionPath); StatusText = "Путь к AI logs скопирован"; LogStructured("ui.command", "info", nameof(MainViewModel), "Copied AI logs path", new { CurrentAiLogSessionPath }); }
+    private async Task MarkIncidentAsync() { var actionId = BeginAction("MarkIncident", new { StatusText, SelectedTrack = SelectedTrack?.Icao }); await _aiLogService.MarkIncidentAsync("User marked incident", new { StatusText, SelectedTrack = SelectedTrack?.Icao, Mode = _liveStatusState.Mode.ToString() }, actionId); StatusText = "Incident marker добавлен в AI logs"; LogEvent("Incident marker создан"); }
 
     private sealed record HistoryFilter(string? Icao, DateTime? FromUtc, DateTime? ToUtc, bool WithCoordinatesOnly);
 }
-
-
