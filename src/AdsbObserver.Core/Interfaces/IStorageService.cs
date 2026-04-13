@@ -4,7 +4,7 @@ namespace AdsbObserver.Core.Interfaces;
 
 public interface IStorageService
 {
-    Task InitializeAsync(CancellationToken cancellationToken);
+    Task<StorageCompatibilityStatus> InitializeAsync(CancellationToken cancellationToken);
     Task<ObservationSettings> GetSettingsAsync(CancellationToken cancellationToken);
     Task SaveSettingsAsync(ObservationSettings settings, CancellationToken cancellationToken);
     Task UpsertTrackAsync(AircraftTrack track, CancellationToken cancellationToken);

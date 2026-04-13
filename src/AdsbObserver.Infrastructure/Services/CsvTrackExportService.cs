@@ -6,7 +6,7 @@ namespace AdsbObserver.Infrastructure.Services;
 
 public sealed class CsvTrackExportService(IStorageService storageService) : ITrackExportService
 {
-    public async Task ExportAsync(string path, string? icao, DateTime? fromUtc, DateTime? toUtc, CancellationToken cancellationToken)
+    public async Task ExportAsync(string path, string? icao, DateTime? fromUtc, DateTime? toUtc, bool withCoordinatesOnly, CancellationToken cancellationToken)
     {
         var tracks = await storageService.GetStoredTracksAsync(fromUtc, toUtc, icao, cancellationToken);
 
@@ -16,7 +16,9 @@ public sealed class CsvTrackExportService(IStorageService storageService) : ITra
 
         foreach (var track in tracks)
         {
-            foreach (var point in track.Points.OrderBy(point => point.TimestampUtc))
+            foreach (var point in track.Points
+                         .Where(point => !withCoordinatesOnly || (point.Latitude != default || point.Longitude != default))
+                         .OrderBy(point => point.TimestampUtc))
             {
                 var line = string.Join(",",
                     track.Icao,

@@ -2,9 +2,10 @@ using System.IO;
 using System.Windows;
 using AdsbObserver.App.ViewModels;
 using AdsbObserver.Core.Interfaces;
-using AdsbObserver.Core.Services;
+using AdsbObserver.Core.Models;
 using AdsbObserver.Infrastructure.Repositories;
 using AdsbObserver.Infrastructure.Services;
+using AdsbObserver.Core.Services;
 
 namespace AdsbObserver.App;
 
@@ -14,27 +15,35 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        var dataRoot = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "AdsbObserver");
-        Directory.CreateDirectory(dataRoot);
+        var workspace = PortableWorkspacePathResolver.Resolve(AppContext.BaseDirectory);
 
-        IStorageService storageService = new SqliteStorageService(Path.Combine(dataRoot, "observer.db"));
-        await storageService.InitializeAsync(CancellationToken.None);
+        IStorageService storageService = new SqliteStorageService(Path.Combine(workspace.DataRoot, "observer.db"));
+        var compatibility = await storageService.InitializeAsync(CancellationToken.None);
+        if (!compatibility.IsCompatible)
+        {
+            MessageBox.Show(
+                compatibility.Message,
+                "Portable data incompatible",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown(-1);
+            return;
+        }
 
         var viewModel = new MainViewModel(
             storageService,
             new RtlSdrDeviceDetector(),
             new Sbs1TcpDecoderAdapter(),
             new SimulatedDecoderAdapter(),
-            new DecoderProcessService(),
+            new DecoderProcessService(workspace),
             new SdrDriverBootstrapService(new RtlSdrDeviceDetector()),
             new CsvRecognitionImportService(storageService),
             new CsvTrackExportService(storageService),
             new MbTilesMapService(),
             new AircraftTrackerService(),
             new PlaybackService(),
-            dataRoot);
+            workspace,
+            compatibility);
 
         var window = new MainWindow
         {

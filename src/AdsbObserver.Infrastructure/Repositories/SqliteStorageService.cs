@@ -8,6 +8,7 @@ namespace AdsbObserver.Infrastructure.Repositories;
 
 public sealed class SqliteStorageService : IStorageService
 {
+    private const int CurrentStorageVersion = 1;
     private readonly string _connectionString;
 
     public SqliteStorageService(string databasePath)
@@ -16,7 +17,7 @@ public sealed class SqliteStorageService : IStorageService
         _connectionString = $"Data Source={databasePath}";
     }
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    public async Task<StorageCompatibilityStatus> InitializeAsync(CancellationToken cancellationToken)
     {
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
@@ -25,6 +26,12 @@ public sealed class SqliteStorageService : IStorageService
         {
             """
             CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS app_metadata (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
@@ -98,6 +105,46 @@ public sealed class SqliteStorageService : IStorageService
             command.CommandText = text;
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
+
+        var detectedVersion = await GetStoredVersionAsync(connection, cancellationToken);
+        if (detectedVersion is null)
+        {
+            await SetStoredVersionAsync(connection, CurrentStorageVersion, cancellationToken);
+            return new StorageCompatibilityStatus(
+                true,
+                false,
+                CurrentStorageVersion,
+                CurrentStorageVersion,
+                "Portable data storage initialized.");
+        }
+
+        if (detectedVersion > CurrentStorageVersion)
+        {
+            return new StorageCompatibilityStatus(
+                false,
+                true,
+                CurrentStorageVersion,
+                detectedVersion.Value,
+                $"Portable data was created by a newer build (v{detectedVersion.Value}).");
+        }
+
+        if (detectedVersion < CurrentStorageVersion)
+        {
+            await SetStoredVersionAsync(connection, CurrentStorageVersion, cancellationToken);
+            return new StorageCompatibilityStatus(
+                true,
+                false,
+                CurrentStorageVersion,
+                detectedVersion.Value,
+                $"Portable data metadata upgraded from v{detectedVersion.Value} to v{CurrentStorageVersion}.");
+        }
+
+        return new StorageCompatibilityStatus(
+            true,
+            false,
+            CurrentStorageVersion,
+            detectedVersion.Value,
+            "Portable data storage is ready.");
     }
 
     public async Task<ObservationSettings> GetSettingsAsync(CancellationToken cancellationToken)
@@ -447,5 +494,28 @@ public sealed class SqliteStorageService : IStorageService
         command.Parameters.AddWithValue("$aircraftType", (object?)track.Recognition?.AircraftType ?? DBNull.Value);
         command.Parameters.AddWithValue("$operator", (object?)track.Recognition?.Operator ?? DBNull.Value);
         command.Parameters.AddWithValue("$country", (object?)track.Recognition?.Country ?? DBNull.Value);
+    }
+
+    private static async Task<int?> GetStoredVersionAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT value FROM app_metadata WHERE key = 'storage_version';";
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is string text && int.TryParse(text, out var parsed)
+            ? parsed
+            : null;
+    }
+
+    private static async Task SetStoredVersionAsync(SqliteConnection connection, int version, CancellationToken cancellationToken)
+    {
+        var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO app_metadata(key, value)
+            VALUES('storage_version', $value)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+            """;
+        command.Parameters.AddWithValue("$value", version.ToString(CultureInfo.InvariantCulture));
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }

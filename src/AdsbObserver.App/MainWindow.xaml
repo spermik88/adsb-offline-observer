@@ -5,12 +5,12 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:models="clr-namespace:AdsbObserver.Core.Models;assembly=AdsbObserver.Core"
         mc:Ignorable="d"
-        Title="ADS-B Offline Observer"
-        Height="900"
-        Width="1500"
-        MinHeight="720"
-        MinWidth="1180"
-        Background="#10161C">
+        Title="ADS-B Observer"
+        Height="920"
+        Width="1560"
+        MinHeight="760"
+        MinWidth="1260"
+        Background="#0B1218">
     <Window.Resources>
         <x:Array x:Key="MapLayerValues" Type="{x:Type models:MapLayerType}">
             <models:MapLayerType>Osm</models:MapLayerType>
@@ -20,325 +20,220 @@
     <Grid Margin="14">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0"
-                Padding="12"
-                Margin="0,0,0,12"
-                Background="#19222B"
-                BorderBrush="#273746"
-                BorderThickness="1"
-                CornerRadius="10">
+        <Border Grid.Row="0" Padding="12" Margin="0,0,0,12" Background="#14202A" BorderBrush="#243746" BorderThickness="1" CornerRadius="10">
             <DockPanel LastChildFill="False">
-                <StackPanel Orientation="Horizontal"
-                            DockPanel.Dock="Left">
-                    <Button Content="Start Live"
-                            Command="{Binding StartLiveCommand}"
-                            Padding="14,8"
-                            Margin="0,0,8,0" />
-                    <Button Content="Stop"
-                            Command="{Binding StopLiveCommand}"
-                            Padding="14,8"
-                            Margin="0,0,8,0" />
-                    <Button Content="Playback"
-                            Command="{Binding StartPlaybackCommand}"
-                            Padding="14,8"
-                            Margin="0,0,8,0" />
-                    <Button Content="Pause"
-                            Command="{Binding PausePlaybackCommand}"
-                            Padding="14,8"
-                            Margin="0,0,8,0" />
-                    <Button Content="Refresh SDR"
-                            Command="{Binding RefreshDevicesCommand}"
-                            Padding="14,8"
-                            Margin="0,0,8,0" />
-                    <Button Content="Prepare Live"
-                            Command="{Binding PrepareLiveCommand}"
-                            Padding="14,8"
-                            Margin="0,0,8,0" />
-                    <Button Content="Download Map"
-                            Command="{Binding DownloadMapCommand}"
-                            Padding="14,8"
-                            Margin="0,0,8,0" />
-                    <Button Content="Import Recognition"
-                            Click="ImportRecognition_Click"
-                            Padding="14,8"
-                            Margin="0,0,8,0" />
-                    <Button Content="Export CSV"
-                            Click="ExportCsv_Click"
-                            Padding="14,8" />
-                </StackPanel>
+                <WrapPanel DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <Button Content="Start Live" Command="{Binding StartLiveCommand}" Padding="14,8" Margin="0,0,8,8" />
+                    <Button Content="Stop" Command="{Binding StopLiveCommand}" Padding="14,8" Margin="0,0,8,8" />
+                    <Button Content="Playback" Command="{Binding StartPlaybackCommand}" Padding="14,8" Margin="0,0,8,8" />
+                    <Button Content="Pause" Command="{Binding PausePlaybackCommand}" Padding="14,8" Margin="0,0,8,8" />
+                    <Button Content="Refresh SDR" Command="{Binding RefreshDevicesCommand}" Padding="14,8" Margin="0,0,8,8" />
+                    <Button Content="Check Live" Command="{Binding PrepareLiveCommand}" Padding="14,8" Margin="0,0,8,8" />
+                    <Button Content="Center Selected" Command="{Binding CenterOnSelectedCommand}" Padding="14,8" Margin="0,0,8,8" />
+                    <Button Content="Reset Center" Command="{Binding ResetCenterCommand}" Padding="14,8" Margin="0,0,8,8" />
+                    <Button Content="Show Selected" Command="{Binding ToggleSelectedOnlyCommand}" Padding="14,8" Margin="0,0,8,8" />
+                    <Button Content="Import Recognition" Click="ImportRecognition_Click" Padding="14,8" Margin="0,0,8,8" />
+                    <Button Content="Export CSV" Click="ExportCsv_Click" Padding="14,8" Margin="0,0,0,8" />
+                </WrapPanel>
 
-                <StackPanel Orientation="Horizontal"
-                            DockPanel.Dock="Right"
-                            VerticalAlignment="Center">
-                    <TextBlock Text="Layer"
-                               Margin="0,0,8,0"
-                               Foreground="#D6E4F0"
-                               VerticalAlignment="Center" />
-                    <ComboBox ItemsSource="{StaticResource MapLayerValues}"
-                              SelectedItem="{Binding SelectedMapLayer}"
-                              Width="140"
-                              Margin="0,0,16,0" />
-                    <TextBlock Text="Zoom"
-                               Margin="0,0,8,0"
-                               Foreground="#D6E4F0"
-                               VerticalAlignment="Center" />
-                    <Slider Minimum="5"
-                            Maximum="12"
-                            Value="{Binding SelectedZoom}"
-                            TickFrequency="1"
-                            IsSnapToTickEnabled="True"
-                            Width="130" />
-                </StackPanel>
+                <WrapPanel DockPanel.Dock="Right" VerticalAlignment="Center">
+                    <TextBlock Text="Layer" Margin="0,0,8,0" Foreground="#D6E4F0" VerticalAlignment="Center" />
+                    <ComboBox ItemsSource="{StaticResource MapLayerValues}" SelectedItem="{Binding SelectedMapLayer}" Width="140" Margin="0,0,16,0" />
+                    <TextBlock Text="Sort" Margin="0,0,8,0" Foreground="#D6E4F0" VerticalAlignment="Center" />
+                    <ComboBox ItemsSource="{Binding SortModes}" SelectedItem="{Binding SelectedSortMode}" Width="120" Margin="0,0,16,0" />
+                    <TextBlock Text="Zoom" Margin="0,0,8,0" Foreground="#D6E4F0" VerticalAlignment="Center" />
+                    <Slider Minimum="5" Maximum="12" Value="{Binding SelectedZoom}" TickFrequency="1" IsSnapToTickEnabled="True" Width="130" />
+                </WrapPanel>
             </DockPanel>
         </Border>
 
-        <Border Grid.Row="0"
-                Margin="0,88,0,12"
-                Padding="12"
-                Background="#2A2618"
-                BorderBrush="#8F6A20"
-                BorderThickness="1"
-                CornerRadius="10">
+        <Border Grid.Row="1" Margin="0,0,0,12" Padding="12" Background="#2A2618" BorderBrush="#8F6A20" BorderThickness="1" CornerRadius="10">
             <StackPanel>
-                <TextBlock Text="{Binding SetupHeadlineText}"
-                           Foreground="#FCE8B2"
-                           FontWeight="SemiBold" />
-                <TextBlock Text="{Binding SetupGuidanceText}"
-                           Margin="0,6,0,0"
-                           Foreground="#F8D88F"
-                           TextWrapping="Wrap" />
+                <TextBlock Text="{Binding SetupHeadlineText}" Foreground="#FCE8B2" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding SetupGuidanceText}" Margin="0,6,0,0" Foreground="#F8D88F" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
 
-        <Grid Grid.Row="1"
-              Margin="0,76,0,0">
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="3*" />
-                <ColumnDefinition Width="400" />
+                <ColumnDefinition Width="430" />
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0"
-                    Margin="0,0,12,0"
-                    Background="#0D141A"
-                    BorderBrush="#273746"
-                    BorderThickness="1"
-                    CornerRadius="10"
-                    Padding="8">
+            <Border Grid.Column="0" Margin="0,0,12,0" Background="#0D141A" BorderBrush="#243746" BorderThickness="1" CornerRadius="10" Padding="8">
                 <Grid>
-                    <Canvas x:Name="MapCanvas" Background="#0D141A" />
-                    <Border HorizontalAlignment="Left"
-                            VerticalAlignment="Top"
-                            Margin="12"
-                            Padding="8"
-                            CornerRadius="8"
-                            Background="#B219222B">
+                    <Canvas x:Name="BackgroundCanvas" />
+                    <Canvas x:Name="TileCanvas" />
+                    <Canvas x:Name="OverlayCanvas" />
+                    <Canvas x:Name="LabelCanvas" />
+                    <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12" Padding="10" CornerRadius="8" Background="#B2152028">
                         <StackPanel>
-                            <TextBlock Text="Observation Center"
-                                       Foreground="#D6E4F0"
-                                       FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding CenterLatitude, StringFormat=Lat: {0:F4}}"
-                                       Foreground="#AFC5D8" />
-                            <TextBlock Text="{Binding CenterLongitude, StringFormat=Lon: {0:F4}}"
-                                       Foreground="#AFC5D8" />
-                            <TextBlock Text="{Binding RadiusKilometers, StringFormat=Radius: {0:F0} km}"
-                                       Foreground="#AFC5D8" />
+                            <TextBlock Text="Observation Center" Foreground="#E4EEF6" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding CenterLatitude, StringFormat=Lat: {0:F4}}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding CenterLongitude, StringFormat=Lon: {0:F4}}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding RadiusKilometers, StringFormat=Radius: {0:F0} km}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding MessagesPerSecondText}" Foreground="#E4EEF6" Margin="0,6,0,0" />
+                            <TextBlock Text="{Binding TrackMetricsText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
                 </Grid>
             </Border>
 
-            <Grid Grid.Column="1">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-
-                <Border Grid.Row="0"
-                        Background="#19222B"
-                        BorderBrush="#273746"
-                        BorderThickness="1"
-                        CornerRadius="10"
-                        Padding="12">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="*" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-
-                        <ListBox Grid.Row="0"
-                                 ItemsSource="{Binding Tracks}"
-                                 SelectedItem="{Binding SelectedTrack}"
-                                 Background="#111920"
-                                 BorderThickness="0"
-                                 Foreground="#E7F1F8">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Margin="0,0,0,6"
-                                            Padding="10"
-                                            Background="#1D2A33"
-                                            CornerRadius="8">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel>
-                                                <TextBlock Text="{Binding Callsign}" FontWeight="SemiBold" />
-                                                <TextBlock Text="{Binding Icao}" Foreground="#8FB3C7" />
-                                                <TextBlock Text="{Binding PositionText}" Foreground="#8FB3C7" />
-                                            </StackPanel>
-                                            <StackPanel Grid.Column="1" HorizontalAlignment="Right">
-                                                <TextBlock Text="{Binding AltitudeText}" HorizontalAlignment="Right" />
-                                                <TextBlock Text="{Binding SpeedText}" Foreground="#8FB3C7" HorizontalAlignment="Right" />
-                                            </StackPanel>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-
-                        <Border Grid.Row="1"
-                                Margin="0,12,0,0"
-                                Padding="10"
-                                Background="#111920"
-                                CornerRadius="8">
-                            <StackPanel>
-                                <TextBlock Text="Selected Track"
-                                           Foreground="#D6E4F0"
-                                           FontWeight="SemiBold"
-                                           Margin="0,0,0,8" />
-                                <TextBlock Text="{Binding SelectedTrack.Icao, TargetNullValue=No selection}" Foreground="#E7F1F8" />
-                                <TextBlock Text="{Binding SelectedTrack.Callsign, StringFormat=Callsign: {0}}" Foreground="#AFC5D8" />
-                                <TextBlock Text="{Binding SelectedTrack.Registration, StringFormat=Registration: {0}}" Foreground="#AFC5D8" />
-                                <TextBlock Text="{Binding SelectedTrack.AircraftType, StringFormat=Type: {0}}" Foreground="#AFC5D8" />
-                                <TextBlock Text="{Binding SelectedTrack.Operator, StringFormat=Operator: {0}}" Foreground="#AFC5D8" />
-                                <TextBlock Text="{Binding SelectedTrack.Country, StringFormat=Country: {0}}" Foreground="#AFC5D8" />
-                                <TextBlock Text="{Binding SelectedTrack.PositionText, StringFormat=Position: {0}}" Foreground="#AFC5D8" />
-                                <TextBlock Text="{Binding SelectedTrack.HeadingText, StringFormat=Heading: {0}}" Foreground="#AFC5D8" />
-                                <TextBlock Text="{Binding SelectedTrack.Squawk, StringFormat=Squawk: {0}}" Foreground="#AFC5D8" />
-                                <TextBlock Text="{Binding SelectedTrack.LastSeenText, StringFormat=Last Seen: {0}}" Foreground="#AFC5D8" />
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-                </Border>
-
-                <Border Grid.Row="1"
-                        Margin="0,12,0,0"
-                        Padding="12"
-                        Background="#19222B"
-                        BorderBrush="#273746"
-                        BorderThickness="1"
-                        CornerRadius="10">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <Border Background="#14202A" BorderBrush="#243746" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,0,0,12">
                         <StackPanel>
-                            <TextBlock Text="Live Settings"
-                                       Foreground="#D6E4F0"
-                                       FontWeight="SemiBold"
-                                       Margin="0,0,0,10" />
-                            <UniformGrid Columns="2" Rows="5">
-                                <StackPanel Margin="0,0,10,10">
-                                    <TextBlock Text="RTL-SDR Device" Foreground="#AFC5D8" />
-                                    <ComboBox ItemsSource="{Binding AvailableDevices}"
-                                              SelectedValue="{Binding SelectedDeviceId}"
-                                              SelectedValuePath="DeviceId"
-                                              DisplayMemberPath="Name" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,0,10">
-                                    <TextBlock Text="Device Selection" Foreground="#AFC5D8" />
-                                    <TextBlock Text="{Binding SelectedDeviceSummary}"
-                                               Foreground="#D6E4F0"
-                                               TextWrapping="Wrap" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,10,10">
-                                    <TextBlock Text="Center Latitude" Foreground="#AFC5D8" />
-                                    <TextBox Text="{Binding CenterLatitude, UpdateSourceTrigger=LostFocus}" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,0,10">
-                                    <TextBlock Text="Center Longitude" Foreground="#AFC5D8" />
-                                    <TextBox Text="{Binding CenterLongitude, UpdateSourceTrigger=LostFocus}" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,10,10">
-                                    <TextBlock Text="Radius (km)" Foreground="#AFC5D8" />
-                                    <TextBox Text="{Binding RadiusKilometers, UpdateSourceTrigger=LostFocus}" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,0,10">
-                                    <TextBlock Text="SBS-1 Port" Foreground="#AFC5D8" />
-                                    <TextBox Text="{Binding DecoderPort, UpdateSourceTrigger=LostFocus}" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,10,10">
-                                    <TextBlock Text="Gain" Foreground="#AFC5D8" />
-                                    <TextBox Text="{Binding Gain, UpdateSourceTrigger=LostFocus}" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,0,10">
-                                    <TextBlock Text="PPM" Foreground="#AFC5D8" />
-                                    <TextBox Text="{Binding PpmCorrection, UpdateSourceTrigger=LostFocus}" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,10,10">
-                                    <TextBlock Text="Sample Rate" Foreground="#AFC5D8" />
-                                    <TextBox Text="{Binding SampleRate, UpdateSourceTrigger=LostFocus}" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,0,10">
-                                    <TextBlock Text="Decoder Host" Foreground="#AFC5D8" />
-                                    <TextBox Text="{Binding DecoderHost, UpdateSourceTrigger=LostFocus}" />
-                                </StackPanel>
+                            <TextBlock Text="Targets" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,0,0,10" />
+                            <TextBlock Text="Search (ICAO / callsign)" Foreground="#AFC5D8" />
+                            <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" />
+                            <UniformGrid Columns="2" Margin="0,0,0,8">
+                                <CheckBox Content="With position" IsChecked="{Binding WithPositionOnly}" Foreground="#D6E4F0" Margin="0,0,0,8" />
+                                <CheckBox Content="Airborne only" IsChecked="{Binding AirborneOnly}" Foreground="#D6E4F0" Margin="0,0,0,8" />
                             </UniformGrid>
+                            <TextBlock Text="Altitude range (ft)" Foreground="#AFC5D8" />
+                            <UniformGrid Columns="2" Margin="0,0,0,8">
+                                <TextBox Text="{Binding MinAltitudeText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,8" ToolTip="Min altitude" />
+                                <TextBox Text="{Binding MaxAltitudeText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" ToolTip="Max altitude" />
+                            </UniformGrid>
+                            <TextBlock Text="Speed range (kt)" Foreground="#AFC5D8" />
+                            <UniformGrid Columns="2" Margin="0,0,0,8">
+                                <TextBox Text="{Binding MinSpeedText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,8" ToolTip="Min speed" />
+                                <TextBox Text="{Binding MaxSpeedText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" ToolTip="Max speed" />
+                            </UniformGrid>
+                            <TextBlock Text="Max distance (km)" Foreground="#AFC5D8" />
+                            <TextBox Text="{Binding MaxDistanceText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,10" ToolTip="Max distance from observation center" />
+                            <Button Content="Reset Filters" Command="{Binding ResetFiltersCommand}" Padding="12,6" Margin="0,0,0,10" />
 
-                            <CheckBox Content="Use simulation fallback if bundled live backend fails"
-                                      IsChecked="{Binding UseSimulationFallback}"
-                                      Margin="0,0,0,10"
-                                      Foreground="#D6E4F0" />
-
-                            <StackPanel Orientation="Horizontal">
-                                <Button Content="Save Settings"
-                                        Command="{Binding SaveSettingsCommand}"
-                                        Padding="12,6"
-                                        Margin="0,0,8,0" />
-                                <Button Content="Prepare Live"
-                                        Command="{Binding PrepareLiveCommand}"
-                                        Padding="12,6" />
-                            </StackPanel>
+                            <ListBox ItemsSource="{Binding Tracks}" SelectedItem="{Binding SelectedTrack}" Background="#0F171E" BorderThickness="0" Foreground="#E7F1F8" MaxHeight="260">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,0,6" Padding="10" CornerRadius="8" Background="#1A2832">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Callsign}" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding Icao}" Foreground="#8FB3C7" />
+                                                    <TextBlock Text="{Binding TrackStatusText}" Foreground="#F0C879" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                                    <TextBlock Text="{Binding AltitudeText}" HorizontalAlignment="Right" />
+                                                    <TextBlock Text="{Binding SpeedText}" Foreground="#8FB3C7" HorizontalAlignment="Right" />
+                                                    <TextBlock Text="{Binding DistanceText}" Foreground="#8FB3C7" HorizontalAlignment="Right" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </StackPanel>
+                    </Border>
 
-                        <StackPanel Grid.Row="1" Margin="0,16,0,0">
-                            <TextBlock Text="Runtime Status"
-                                       Foreground="#D6E4F0"
-                                       FontWeight="SemiBold"
-                                       Margin="0,0,0,8" />
-                            <TextBlock Text="App installed: yes" Foreground="#D6E4F0" />
+                    <Border Background="#14202A" BorderBrush="#243746" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="Selected Track" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,0,0,10" />
+                            <TextBlock Text="{Binding SelectedTrack.Icao, TargetNullValue=No selection}" Foreground="#E7F1F8" />
+                            <TextBlock Text="{Binding SelectedTrack.Callsign, StringFormat=Callsign: {0}}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding SelectedTrack.Registration, StringFormat=Registration: {0}}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding SelectedTrack.AircraftType, StringFormat=Type: {0}}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding SelectedTrack.Operator, StringFormat=Operator: {0}}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding SelectedTrack.Country, StringFormat=Country: {0}}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding SelectedTrack.PositionText, StringFormat=Position: {0}}" Foreground="#AFC5D8" />
+                            <WrapPanel>
+                                <TextBlock Text="{Binding SelectedTrack.DistanceText, StringFormat=Distance: {0}}" Foreground="#AFC5D8" Margin="0,0,12,0" />
+                                <TextBlock Text="{Binding SelectedTrack.BearingText, StringFormat=Bearing: {0}}" Foreground="#AFC5D8" />
+                            </WrapPanel>
+                            <TextBlock Text="{Binding SelectedTrack.HeadingText, StringFormat=Heading: {0}}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding SelectedTrack.VerticalRateText, StringFormat=Vertical rate: {0}}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding SelectedTrack.TrackStatusText, StringFormat=Status: {0}, TargetNullValue=No selection}" Foreground="#F0C879" />
+                            <TextBlock Text="{Binding SelectedTrack.EmitterCategory, StringFormat=Emitter: {0}}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding SelectedTrack.Squawk, StringFormat=Squawk: {0}}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding SelectedTrack.LastSeenText, StringFormat=Last seen: {0}}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding SelectedTrack.LastSeenAgeText, StringFormat=Age: {0}}" Foreground="#AFC5D8" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="#14202A" BorderBrush="#243746" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="History Scope" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,0,0,10" />
+                            <TextBlock Text="ICAO filter" Foreground="#AFC5D8" />
+                            <TextBox Text="{Binding HistoryIcaoText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" />
+                            <TextBlock Text="Period (local time)" Foreground="#AFC5D8" />
+                            <UniformGrid Columns="2" Margin="0,0,0,8">
+                                <TextBox Text="{Binding HistoryFromText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,8" ToolTip="From, for example 2026-04-10 or 2026-04-10 14:30" />
+                                <TextBox Text="{Binding HistoryToText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,8" ToolTip="To, for example 2026-04-13 or 2026-04-13 22:00" />
+                            </UniformGrid>
+                            <UniformGrid Columns="2" Margin="0,0,0,8">
+                                <CheckBox Content="Selected only" IsChecked="{Binding HistorySelectedOnly}" Foreground="#D6E4F0" Margin="0,0,0,8" />
+                                <CheckBox Content="Coordinates only" IsChecked="{Binding HistoryWithCoordinatesOnly}" Foreground="#D6E4F0" Margin="0,0,0,8" />
+                            </UniformGrid>
+                            <TextBlock Text="Эти фильтры применяются к Playback и Export CSV." Foreground="#8FB3C7" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="#14202A" BorderBrush="#243746" BorderThickness="1" CornerRadius="10" Padding="12" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="Live Status" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,0,0,10" />
+                            <TextBlock Text="{Binding ModeText}" Foreground="#D6E4F0" />
+                            <TextBlock Text="Health" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,8,0,4" />
+                            <TextBlock Text="{Binding LiveSourceText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding SourceSummaryText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding BackendReadinessText}" Foreground="#AFC5D8" />
                             <TextBlock Text="{Binding DriverReadinessText}" Foreground="#AFC5D8" />
                             <TextBlock Text="{Binding LiveReadinessText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
-                            <TextBlock Text="{Binding LiveSourceText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
-                            <TextBlock Text="{Binding DeviceStatusText}" Foreground="#D6E4F0" Margin="0,8,0,0" />
+                            <TextBlock Text="{Binding DeviceStatusText}" Foreground="#AFC5D8" Margin="0,8,0,0" />
                             <TextBlock Text="{Binding DecoderStatusText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
-                            <TextBlock Text="{Binding ModeText}" Foreground="#AFC5D8" />
-                            <TextBlock Text="{Binding MapStatusText}" Foreground="#AFC5D8" />
-                            <TextBlock Text="{Binding RecognitionStatusText}" Foreground="#AFC5D8" />
-                            <TextBlock Text="{Binding ActiveTrackCount, StringFormat=Active tracks: {0}}" Foreground="#AFC5D8" />
+                            <TextBlock Text="{Binding DecoderFailureText}" Foreground="#F0C879" TextWrapping="Wrap" />
+                            <TextBlock Text="Metrics" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,8,0,4" />
+                            <TextBlock Text="{Binding MessagesPerSecondText}" Foreground="#D6E4F0" Margin="0,8,0,0" />
+                            <TextBlock Text="{Binding TrackMetricsText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding MapStatusText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding RecognitionStatusText}" Foreground="#AFC5D8" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding CapabilitiesText}" Foreground="#D6E4F0" Margin="0,8,0,0" TextWrapping="Wrap" />
+                            <TextBlock Text="Recent Events" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,8,0,4" />
+                            <ItemsControl ItemsSource="{Binding RecentEvents}" Margin="0,8,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" Foreground="#8FB3C7" TextWrapping="Wrap" Margin="0,0,0,4" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
-                    </Grid>
-                </Border>
-            </Grid>
+                    </Border>
+
+                    <Border Background="#14202A" BorderBrush="#243746" BorderThickness="1" CornerRadius="10" Padding="12">
+                        <StackPanel>
+                            <TextBlock Text="Settings" Foreground="#D6E4F0" FontWeight="SemiBold" Margin="0,0,0,10" />
+                            <TextBlock Text="RTL-SDR Device" Foreground="#AFC5D8" />
+                            <ComboBox ItemsSource="{Binding AvailableDevices}" SelectedValue="{Binding SelectedDeviceId}" SelectedValuePath="DeviceId" DisplayMemberPath="Name" Margin="0,0,0,8" />
+                            <TextBlock Text="{Binding SelectedDeviceSummary}" Foreground="#D6E4F0" TextWrapping="Wrap" Margin="0,0,0,8" />
+                            <UniformGrid Columns="2">
+                                <TextBox Text="{Binding CenterLatitude, UpdateSourceTrigger=LostFocus}" Margin="0,0,8,8" />
+                                <TextBox Text="{Binding CenterLongitude, UpdateSourceTrigger=LostFocus}" Margin="0,0,0,8" />
+                                <TextBox Text="{Binding RadiusKilometers, UpdateSourceTrigger=LostFocus}" Margin="0,0,8,8" />
+                                <TextBox Text="{Binding DecoderPort, UpdateSourceTrigger=LostFocus}" Margin="0,0,0,8" />
+                                <TextBox Text="{Binding Gain, UpdateSourceTrigger=LostFocus}" Margin="0,0,8,8" />
+                                <TextBox Text="{Binding PpmCorrection, UpdateSourceTrigger=LostFocus}" Margin="0,0,0,8" />
+                                <TextBox Text="{Binding SampleRate, UpdateSourceTrigger=LostFocus}" Margin="0,0,8,8" />
+                                <TextBox Text="{Binding DecoderHost, UpdateSourceTrigger=LostFocus}" Margin="0,0,0,8" />
+                            </UniformGrid>
+                            <CheckBox Content="Use simulation fallback" IsChecked="{Binding UseSimulationFallback}" Foreground="#D6E4F0" Margin="0,0,0,10" />
+                            <Button Content="Save Settings" Command="{Binding SaveSettingsCommand}" Padding="12,6" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
 
-        <Border Grid.Row="2"
-                Margin="0,12,0,0"
-                Padding="12"
-                Background="#19222B"
-                BorderBrush="#273746"
-                BorderThickness="1"
-                CornerRadius="10">
-            <TextBlock Text="{Binding StatusText}"
-                       Foreground="#E7F1F8" />
+        <Border Grid.Row="3" Margin="0,12,0,0" Padding="12" Background="#14202A" BorderBrush="#243746" BorderThickness="1" CornerRadius="10">
+            <TextBlock Text="{Binding StatusText}" Foreground="#E7F1F8" />
         </Border>
     </Grid>
 </Window>

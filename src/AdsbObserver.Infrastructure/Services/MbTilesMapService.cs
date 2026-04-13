@@ -86,6 +86,56 @@ public sealed class MbTilesMapService : IMapTileService
         return value as byte[];
     }
 
+    public async Task<MapPackageInfo?> InspectPackageAsync(string filePath, CancellationToken cancellationToken)
+    {
+        if (!File.Exists(filePath))
+        {
+            return null;
+        }
+
+        await using var connection = new SqliteConnection($"Data Source={filePath}");
+        await connection.OpenAsync(cancellationToken);
+
+        var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var command = connection.CreateCommand();
+        command.CommandText = "SELECT name, value FROM metadata;";
+
+        try
+        {
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                metadata[reader.GetString(0)] = reader.GetString(1);
+            }
+        }
+        catch (SqliteException)
+        {
+            return null;
+        }
+
+        var bounds = ParseBounds(metadata.TryGetValue("bounds", out var boundsValue) ? boundsValue : null);
+        var minZoom = ParseInt(metadata.TryGetValue("minzoom", out var minZoomValue) ? minZoomValue : null, 0);
+        var maxZoom = ParseInt(metadata.TryGetValue("maxzoom", out var maxZoomValue) ? maxZoomValue : null, Math.Max(minZoom, 12));
+        var name = metadata.TryGetValue("name", out var nameValue)
+            ? nameValue
+            : Path.GetFileNameWithoutExtension(filePath);
+
+        return new MapPackageInfo
+        {
+            Id = BuildStablePackageId(filePath),
+            Name = name,
+            LayerType = InferLayerType(filePath, name),
+            FilePath = Path.GetFullPath(filePath),
+            MinZoom = minZoom,
+            MaxZoom = maxZoom,
+            North = bounds.North,
+            South = bounds.South,
+            East = bounds.East,
+            West = bounds.West,
+            DownloadedUtc = File.GetLastWriteTimeUtc(filePath)
+        };
+    }
+
     private static IEnumerable<(int Zoom, int X, int Y)> BuildTileManifest(MapPackageInfo package)
     {
         for (var zoom = package.MinZoom; zoom <= package.MaxZoom; zoom++)
@@ -133,6 +183,45 @@ public sealed class MbTilesMapService : IMapTileService
         command.Parameters.AddWithValue("$name", name);
         command.Parameters.AddWithValue("$value", value);
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static (double North, double South, double East, double West) ParseBounds(string? bounds)
+    {
+        if (string.IsNullOrWhiteSpace(bounds))
+        {
+            return (85, -85, 180, -180);
+        }
+
+        var parts = bounds.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 4 ||
+            !double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var west) ||
+            !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var south) ||
+            !double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var east) ||
+            !double.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out var north))
+        {
+            return (85, -85, 180, -180);
+        }
+
+        return (north, south, east, west);
+    }
+
+    private static int ParseInt(string? value, int fallback) =>
+        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : fallback;
+
+    private static MapLayerType InferLayerType(string filePath, string name)
+    {
+        var text = $"{filePath} {name}".ToLowerInvariant();
+        return text.Contains("sat", StringComparison.Ordinal) || text.Contains("imagery", StringComparison.Ordinal)
+            ? MapLayerType.Satellite
+            : MapLayerType.Osm;
+    }
+
+    private static string BuildStablePackageId(string filePath)
+    {
+        var normalized = Path.GetFullPath(filePath).ToUpperInvariant();
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(normalized)));
     }
 
     private static readonly string[] Schema =
