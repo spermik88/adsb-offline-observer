@@ -2,42 +2,23 @@
 
 Windows-приложение на `WPF` для наблюдения за `ADS-B` трафиком через `RTL-SDR`, просмотра истории, playback-записей и работы с офлайн-картами `MBTiles`.
 
-## Что умеет
+## Что в репозитории считать рабочим
 
-- live-прием через встроенный `dump1090`
-- playback сохраненной истории
-- карта с переключением слоев и отображением треков
-- фильтрация по `ICAO`, callsign, высоте, скорости и дистанции
-- импорт базы распознавания бортов
-- экспорт истории в `CSV`
-- portable-режим с локальными папками `data`, `logs`, `maps`, `recordings`
+- Исходники приложения находятся только в `src/AdsbObserver.App`, `src/AdsbObserver.Core`, `src/AdsbObserver.Infrastructure`.
+- Каталоги `bin/`, `obj/`, `tests/**/bin`, `tests/**/obj`, `src/artifacts`, `artifacts` считаются производными.
+- `C:\Users\bebra\Documents\Playground\src\AdsbObserver.App\bin\Debug\net8.0-windows\AdsbObserver.App.exe` это обычный локальный debug-выход текущего проекта, а не отдельная версия приложения.
 
 ## Структура проекта
 
-- `src/AdsbObserver.App` — WPF-клиент
-- `src/AdsbObserver.Core` — доменные модели и интерфейсы
-- `src/AdsbObserver.Infrastructure` — работа с хранилищем, `dump1090`, картами, устройствами и импортом/экспортом
-- `tests/AdsbObserver.Tests` — `xUnit` тесты
-- `src/artifacts/portable/win-x64` — готовая portable-сборка
-- `src/artifacts/portable/AdsbObserver-win-x64-portable.zip` — portable-архив
-- `docs` — заметки по релизу и smoke-check
+- `src/AdsbObserver.App` - WPF-клиент
+- `src/AdsbObserver.Core` - доменные модели и интерфейсы
+- `src/AdsbObserver.Infrastructure` - хранилище, `dump1090`, карты, устройства, импорт и экспорт
+- `tests/AdsbObserver.Tests` - `xUnit` тесты
+- `scripts` - служебные скрипты очистки и release-сборки
+- `artifacts` - publish/portable/release артефакты, создаются скриптами и могут быть удалены
+- `docs` - заметки по релизу и проверкам
 
-## Быстрый старт
-
-### Вариант 1: запустить готовую portable-сборку
-
-1. Открой папку `C:\Users\bebra\Documents\Playground\src\artifacts\portable\win-x64`.
-2. Запусти `AdsbObserver.App.exe`.
-3. Если Windows покажет предупреждение безопасности, подтверди запуск.
-
-Приложение будет использовать папки рядом с `.exe`:
-
-- `data` — база и настройки
-- `logs` — логи приложения и `dump1090`
-- `maps` — офлайн-карты `MBTiles`
-- `recordings` — экспорт и сохраненные данные
-
-### Вариант 2: запустить из исходников
+## Быстрый запуск для разработки
 
 Требования:
 
@@ -45,35 +26,67 @@ Windows-приложение на `WPF` для наблюдения за `ADS-B`
 - `.NET SDK 10.0.201` по `global.json`
 - `Microsoft.WindowsDesktop.App 8.x`
 
-Команда запуска:
+Сборка:
 
 ```powershell
 cd C:\Users\bebra\Documents\Playground
+dotnet build .\AdsbObserver.slnx
+```
+
+Запуск из исходников:
+
+```powershell
 dotnet run --project .\src\AdsbObserver.App\AdsbObserver.App.csproj
+```
+
+После обычной debug-сборки запускной файл появляется здесь:
+
+`C:\Users\bebra\Documents\Playground\src\AdsbObserver.App\bin\Debug\net8.0-windows\AdsbObserver.App.exe`
+
+## Очистка мусора сборки
+
+Безопасно удалять:
+
+- все `bin/` и `obj/`
+- `src/artifacts`
+- `artifacts`
+
+Полная очистка рабочего дерева:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Clean-Workspace.ps1
+```
+
+## Release и portable-сборка
+
+Publish и portable-артефакты больше не должны смешиваться с исходниками. Скрипты складывают результаты в верхнеуровневый каталог:
+
+- publish: `C:\Users\bebra\Documents\Playground\artifacts\publish\win-x64`
+- portable: `C:\Users\bebra\Documents\Playground\artifacts\portable\win-x64`
+- portable zip: `C:\Users\bebra\Documents\Playground\artifacts\release\win-x64\AdsbObserver-win-x64-portable.zip`
+
+Сборка portable-релиза:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\Invoke-ReleaseBuild.ps1
 ```
 
 ## Live-режим с RTL-SDR
 
-Для live-приема нужен совместимый `RTL-SDR` донгл и установленный `WinUSB` драйвер.
+Для live-приёма нужен совместимый `RTL-SDR` донгл и установленный `WinUSB` драйвер.
 
-1. Подключи `RTL-SDR` устройство.
-2. Открой папку `C:\Users\bebra\Documents\Playground\src\AdsbObserver.App\BundledAssets\drivers\rtl-sdr`.
-3. Запусти `zadig.exe`.
-4. В `Zadig` выбери устройство `RTL-SDR`.
-5. Установи драйвер `WinUSB`.
-6. Запусти `AdsbObserver.App.exe`.
-7. Нажми `Refresh SDR`, затем `Check Live`.
-8. Если окружение готово, нажми `Start Live`.
-
-Примечания:
-
-- встроенный `dump1090.exe` уже включен в приложение
-- portable-сборка не устанавливает драйверы автоматически
-- если устройство не найдено, проверь драйвер и повтори `Refresh SDR`
+1. Подключите `RTL-SDR` устройство.
+2. Откройте `C:\Users\bebra\Documents\Playground\src\AdsbObserver.App\BundledAssets\drivers\rtl-sdr`.
+3. Запустите `zadig.exe`.
+4. В `Zadig` выберите устройство `RTL-SDR`.
+5. Установите драйвер `WinUSB`.
+6. Запустите приложение.
+7. Нажмите `Обновить SDR`, затем `Проверить Live`.
+8. Если окружение готово, нажмите `Старт Live`.
 
 ## Работа без SDR
 
-Приложение можно использовать и без live-приема:
+Приложение можно использовать и без live-приёма:
 
 - открывать playback
 - просматривать историю
@@ -81,58 +94,25 @@ dotnet run --project .\src\AdsbObserver.App\AdsbObserver.App.csproj
 - экспортировать данные в `CSV`
 - работать с офлайн-картами
 
-Чтобы добавить карты, положи файлы `*.mbtiles` в:
-
-`C:\Users\bebra\Documents\Playground\src\artifacts\portable\win-x64\maps`
-
-## Сборка и публикация
-
-### Сборка решения
-
-```powershell
-cd C:\Users\bebra\Documents\Playground
-dotnet build .\AdsbObserver.slnx
-```
-
-### Запуск тестов
-
-```powershell
-dotnet test .\AdsbObserver.slnx
-```
-
-### Публикация `win-x64`
-
-```powershell
-dotnet publish .\src\AdsbObserver.App\AdsbObserver.App.csproj -c Release -r win-x64
-```
-
-Текущий publish-профиль собирает приложение в:
-
-`src\artifacts\publish\win-x64`
-
-## Где искать готовые файлы
-
-- portable-папка: `C:\Users\bebra\Documents\Playground\src\artifacts\portable\win-x64`
-- publish-папка: `C:\Users\bebra\Documents\Playground\src\artifacts\publish\win-x64`
-- portable-zip: `C:\Users\bebra\Documents\Playground\src\artifacts\portable\AdsbObserver-win-x64-portable.zip`
+Чтобы добавить карты, положите файлы `*.mbtiles` в каталог `maps` рядом с выбранной portable-сборкой или в рабочую portable-папку данных.
 
 ## Диагностика
 
 Если приложение не стартует:
 
-- проверь наличие `Microsoft.WindowsDesktop.App 8.x`
-- проверь, что запускается именно `AdsbObserver.App.exe` из portable-папки
-- посмотри логи в `src\artifacts\portable\win-x64\logs`
+- проверьте наличие `Microsoft.WindowsDesktop.App 8.x`
+- убедитесь, что запускаете либо debug-выход из `bin\Debug`, либо явную portable-сборку из `artifacts\portable`
+- проверьте логи в portable-каталоге `logs`
 
 Если live-режим не поднимается:
 
-- убедись, что `RTL-SDR` определяется в системе
-- переустанови `WinUSB` через `zadig.exe`
-- в приложении нажми `Refresh SDR` и `Check Live`
-- проверь логи `dump1090` в папке `logs`
+- убедитесь, что `RTL-SDR` определяется системой
+- переустановите `WinUSB` через `zadig.exe`
+- нажмите `Обновить SDR` и `Проверить Live`
+- проверьте логи `dump1090`
 
 ## Полезные документы
 
-- [Portable release notes](C:\Users\bebra\Documents\Playground\docs\portable-release-notes.md)
-- [Release binaries](C:\Users\bebra\Documents\Playground\docs\release-binaries.md)
-- [Release smoke checklist](C:\Users\bebra\Documents\Playground\docs\release-smoke-checklist.md)
+- [Portable release notes](/C:/Users/bebra/Documents/Playground/docs/portable-release-notes.md)
+- [Release binaries](/C:/Users/bebra/Documents/Playground/docs/release-binaries.md)
+- [Release smoke checklist](/C:/Users/bebra/Documents/Playground/docs/release-smoke-checklist.md)

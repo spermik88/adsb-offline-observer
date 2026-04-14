@@ -17,10 +17,10 @@ internal sealed class LiveStatusState
     private DateTime _metricsWindowStartedUtc = DateTime.UtcNow;
 
     public AppMode Mode { get; private set; } = AppMode.Idle;
-    public string LiveSourceText { get; private set; } = "Источник: bundled dump1090";
+    public string LiveSourceText { get; private set; } = "Источник: встроенный dump1090";
     public string StatusText { get; private set; } = "Подготовка окружения...";
     public ObservableCollection<string> RecentEvents { get; } = [];
-    public string MessagesPerSecondText { get; private set; } = "Messages/sec: 0";
+    public string MessagesPerSecondText { get; private set; } = "Сообщений/с: 0";
 
     public void SetMode(AppMode mode, string? sourceText = null, string? statusText = null)
     {
@@ -46,7 +46,7 @@ internal sealed class LiveStatusState
         var now = DateTime.UtcNow;
         if ((now - _metricsWindowStartedUtc).TotalSeconds >= 1)
         {
-            MessagesPerSecondText = $"Messages/sec: {_messageCounter}";
+            MessagesPerSecondText = $"Сообщений/с: {_messageCounter}";
             _messageCounter = 0;
             _metricsWindowStartedUtc = now;
         }
@@ -63,17 +63,17 @@ internal sealed class LiveStatusState
 
     public static string FormatMode(AppMode mode, DateTime? playbackTimestampUtc = null) => mode switch
     {
-        AppMode.Live => "Режим: live",
-        AppMode.Playback when playbackTimestampUtc.HasValue => $"Режим: playback @ {playbackTimestampUtc.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss}",
-        AppMode.Playback => "Режим: playback",
+        AppMode.Live => "Режим: Live",
+        AppMode.Playback when playbackTimestampUtc.HasValue => $"Режим: воспроизведение @ {playbackTimestampUtc.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss}",
+        AppMode.Playback => "Режим: воспроизведение",
         AppMode.SimulationFallback => "Режим: simulation fallback",
-        _ => "Режим: idle"
+        _ => "Режим: ожидание"
     };
 
     public void ApplyEnvironmentStatus(LiveEnvironmentStatus environment, string decoderHost, int decoderPort)
     {
         LiveSourceText = environment.Issue == LiveEnvironmentIssue.PortBusy
             ? $"Источник: внешний SBS-1 {decoderHost}:{decoderPort}"
-            : "Источник: bundled dump1090";
+            : "Источник: встроенный dump1090";
     }
 }

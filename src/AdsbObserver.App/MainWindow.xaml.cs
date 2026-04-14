@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using AdsbObserver.App.Localization;
 using AdsbObserver.App.Rendering;
 using AdsbObserver.App.ViewModels;
 using AdsbObserver.Core.Models;
@@ -53,7 +54,7 @@ public partial class MainWindow : Window
 
     private async void ImportRecognition_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Filter = "CSV/TSV files|*.csv;*.tsv|All files|*.*" };
+        var dialog = new OpenFileDialog { Filter = "Файлы CSV/TSV|*.csv;*.tsv|Все файлы|*.*" };
         if (dialog.ShowDialog(this) == true)
         {
             await ViewModel.LogExternalEventAsync("ui.command", "info", nameof(MainWindow), "Import dialog accepted", new { dialog.FileName });
@@ -67,7 +68,7 @@ public partial class MainWindow : Window
 
     private async void ExportCsv_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new SaveFileDialog { Filter = "CSV files|*.csv", FileName = ViewModel.SelectedTrack?.Icao is { Length: > 0 } icao ? $"{icao}.csv" : "tracks.csv" };
+        var dialog = new SaveFileDialog { Filter = "Файлы CSV|*.csv", FileName = ViewModel.SelectedTrack?.Icao is { Length: > 0 } icao ? $"{icao}.csv" : "tracks.csv" };
         if (dialog.ShowDialog(this) == true)
         {
             await ViewModel.LogExternalEventAsync("ui.command", "info", nameof(MainWindow), "Export dialog accepted", new { dialog.FileName });
@@ -163,7 +164,7 @@ public partial class MainWindow : Window
 
             var label = new TextBlock
             {
-                Text = $"{ViewModel.RadiusKilometers * i / 4:F0} km",
+                Text = $"{ViewModel.RadiusKilometers * i / 4:F0} км",
                 Foreground = new SolidColorBrush(Color.FromRgb(160, 188, 205)),
                 FontSize = 11
             };

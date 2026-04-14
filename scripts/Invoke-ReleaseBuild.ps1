@@ -5,9 +5,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$publishDir = Join-Path $root "src\artifacts\publish\$Runtime"
-$portableRoot = Join-Path $root "src\artifacts\portable\$Runtime"
-$releaseDir = Join-Path $root "src\artifacts\release\$Runtime"
+$publishDir = Join-Path $root "artifacts\publish\$Runtime"
+$portableRoot = Join-Path $root "artifacts\portable\$Runtime"
+$releaseDir = Join-Path $root "artifacts\release\$Runtime"
 $zipPath = Join-Path $releaseDir "AdsbObserver-$Runtime-portable.zip"
 
 if (Test-Path $portableRoot) {

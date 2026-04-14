@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
+using AdsbObserver.App.Localization;
 using AdsbObserver.Core.Interfaces;
 using AdsbObserver.Core.Models;
 using AdsbObserver.Core.Services;
@@ -32,19 +33,31 @@ public sealed class MainViewModel : ObservableObject
     private readonly LiveStatusState _liveStatusState = new();
     private readonly MapViewState _mapViewState = new();
     private readonly object _trackerLock = new();
+    private readonly IReadOnlyList<OptionItem<MapLayerType>> _mapLayerOptions =
+    [
+        new(MapLayerType.Osm, UiText.MapLayer(MapLayerType.Osm)),
+        new(MapLayerType.Satellite, UiText.MapLayer(MapLayerType.Satellite))
+    ];
+    private readonly IReadOnlyList<OptionItem<TrackSortMode>> _sortModeOptions =
+    [
+        new(TrackSortMode.LastSeen, UiText.TrackSortMode(TrackSortMode.LastSeen)),
+        new(TrackSortMode.Distance, UiText.TrackSortMode(TrackSortMode.Distance)),
+        new(TrackSortMode.Altitude, UiText.TrackSortMode(TrackSortMode.Altitude)),
+        new(TrackSortMode.Speed, UiText.TrackSortMode(TrackSortMode.Speed))
+    ];
     private IReadOnlyDictionary<string, AircraftRecognitionRecord> _recognitionLookup = new Dictionary<string, AircraftRecognitionRecord>(StringComparer.OrdinalIgnoreCase);
     private ObservationSettings _settings = new();
     private CancellationTokenSource? _liveCts;
     private string _deviceStatusText = "RTL-SDR: проверка...";
     private string _recognitionStatusText = "Распознавание: база не загружена";
-    private string _decoderStatusText = "Источник: decoder не запущен";
+    private string _decoderStatusText = "Источник: декодер не запущен";
     private string _backendReadinessText = "Backend: проверка...";
-    private string _driverReadinessText = "RTL-SDR driver: проверка...";
+    private string _driverReadinessText = "Драйвер RTL-SDR: проверка...";
     private string _liveReadinessText = "Live: проверка...";
     private string _setupHeadlineText = "Проверка portable-окружения";
-    private string _setupGuidanceText = "Приложение проверяет live, playback, карты и историю.";
+    private string _setupGuidanceText = "Приложение проверяет Live, воспроизведение, карты и историю.";
     private string _mapStatusText = "Карты: не найдены";
-    private string _portableStatusText = "Portable storage: проверка...";
+    private string _portableStatusText = "Portable-хранилище: проверка...";
     private string _workspaceStatusText = string.Empty;
     private string _capabilitiesText = "Доступно: анализ истории";
     private string _searchText = string.Empty;
@@ -53,10 +66,10 @@ public sealed class MainViewModel : ObservableObject
     private string _minSpeedText = string.Empty;
     private string _maxSpeedText = string.Empty;
     private string _maxDistanceText = string.Empty;
-    private string _trackMetricsText = "Треки: 0 active / 0 stale / 0 with position";
-    private string _sourceSummaryText = "Источник: idle";
-    private string _decoderFailureText = "Decoder: явных ошибок нет";
-    private string _aiLogsStatusText = "AI logs: checking...";
+    private string _trackMetricsText = "Треки: 0 активных / 0 устаревших / 0 с координатами";
+    private string _sourceSummaryText = "Источник: ожидание";
+    private string _decoderFailureText = "Декодер: явных ошибок нет";
+    private string _aiLogsStatusText = "AI-логи: проверка...";
     private string _currentAiLogSessionPath = string.Empty;
     private string _historyIcaoText = string.Empty;
     private string _historyFromText = string.Empty;
@@ -98,7 +111,8 @@ public sealed class MainViewModel : ObservableObject
     public ObservableCollection<TrackViewModel> Tracks => _trackListState.Tracks;
     public ObservableCollection<SdrDeviceInfo> AvailableDevices => _availableDevices;
     public ObservableCollection<string> RecentEvents => _liveStatusState.RecentEvents;
-    public Array SortModes => Enum.GetValues(typeof(TrackSortMode));
+    public IReadOnlyList<OptionItem<MapLayerType>> MapLayerOptions => _mapLayerOptions;
+    public IReadOnlyList<OptionItem<TrackSortMode>> SortModes => _sortModeOptions;
     public RelayCommand StartLiveCommand { get; }
     public RelayCommand StopLiveCommand { get; }
     public RelayCommand RefreshDevicesCommand { get; }
@@ -179,7 +193,7 @@ public sealed class MainViewModel : ObservableObject
         _aiLogsEnabled = _settings.AiLogsEnabled;
         _mapViewState.CaptureObservationCenter(_settings.CenterLatitude, _settings.CenterLongitude);
         RaisePropertyChanged(nameof(CenterLatitude)); RaisePropertyChanged(nameof(CenterLongitude)); RaisePropertyChanged(nameof(RadiusKilometers)); RaisePropertyChanged(nameof(SelectedZoom)); RaisePropertyChanged(nameof(Gain)); RaisePropertyChanged(nameof(PpmCorrection)); RaisePropertyChanged(nameof(SampleRate)); RaisePropertyChanged(nameof(DecoderHost)); RaisePropertyChanged(nameof(DecoderPort)); RaisePropertyChanged(nameof(UseSimulationFallback)); RaisePropertyChanged(nameof(SelectedDeviceId)); RaisePropertyChanged(nameof(SelectedDeviceSummary)); RaisePropertyChanged(nameof(AiLogsEnabled));
-        PortableStatusText = $"Portable storage: {_storageCompatibility.Message}";
+        PortableStatusText = $"Portable-хранилище: {_storageCompatibility.Message}";
         WorkspaceStatusText = $"Папки: data={_workspace.DataRoot}, maps={_workspace.MapsRoot}, recordings={_workspace.RecordingsRoot}, logs={_workspace.LogsRoot}";
         UpdateAiLogStatus();
         _recognitionLookup = await _storageService.GetRecognitionLookupAsync(CancellationToken.None);

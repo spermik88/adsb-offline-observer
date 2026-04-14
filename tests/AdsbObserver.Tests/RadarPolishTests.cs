@@ -84,15 +84,15 @@ public sealed class RadarPolishTests
     {
         var state = new LiveStatusState();
 
-        state.SetMode(AppMode.Live, "Источник: bundled dump1090", "Запуск");
-        state.LogEvent("Started");
+        state.SetMode(AppMode.Live, "Источник: встроенный dump1090", "Запуск");
+        state.LogEvent("Запуск");
 
         Assert.Equal(AppMode.Live, state.Mode);
-        Assert.Equal("Источник: bundled dump1090", state.LiveSourceText);
+        Assert.Equal("Источник: встроенный dump1090", state.LiveSourceText);
         Assert.Single(state.RecentEvents);
 
         state.RegisterMessage();
-        Assert.StartsWith("Messages/sec:", state.MessagesPerSecondText, StringComparison.Ordinal);
+        Assert.StartsWith("Сообщений/с:", state.MessagesPerSecondText, StringComparison.Ordinal);
     }
 
     private static TrackViewModel CreateTrackViewModel(string icao)
