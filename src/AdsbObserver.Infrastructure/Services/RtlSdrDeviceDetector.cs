@@ -10,9 +10,11 @@ public sealed class RtlSdrDeviceDetector : IDeviceDetector
     [
         "RTL2832",
         "RTL2838",
+        "RTL2838UHIDIR",
         "Realtek 2832",
         "DVB-T",
-        "RTL-SDR"
+        "RTL-SDR",
+        "VID_0BDA&PID_2838"
     ];
 
     public async Task<IReadOnlyList<SdrDeviceInfo>> DetectAsync(CancellationToken cancellationToken)
@@ -31,68 +33,132 @@ public sealed class RtlSdrDeviceDetector : IDeviceDetector
         var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken);
 
-        var devices = new List<SdrDeviceInfo>();
-        var currentName = string.Empty;
-        var currentId = string.Empty;
-        var currentDriver = string.Empty;
-        var currentService = string.Empty;
+        return ParsePnpUtilOutput(output);
+    }
 
-        foreach (var line in output.Split(Environment.NewLine))
+    internal static IReadOnlyList<SdrDeviceInfo> ParsePnpUtilOutput(string output)
+    {
+        var devices = new List<SdrDeviceInfo>();
+        var current = new DeviceBlock();
+        var inMatchingDrivers = false;
+
+        foreach (var rawLine in output.Split(["\r\n", "\n"], StringSplitOptions.None))
         {
-            if (line.StartsWith("Device Description:", StringComparison.OrdinalIgnoreCase))
+            var line = rawLine.Trim();
+            if (string.IsNullOrWhiteSpace(line))
             {
-                TryAddCurrentDevice();
-                currentName = line[(line.IndexOf(':') + 1)..].Trim();
-                currentId = string.Empty;
-                currentDriver = string.Empty;
-                currentService = string.Empty;
+                continue;
             }
-            else if (line.StartsWith("Instance ID:", StringComparison.OrdinalIgnoreCase))
+
+            if (TryReadValue(line, "Instance ID:", out var instanceId))
             {
-                currentId = line[(line.IndexOf(':') + 1)..].Trim();
+                TryAddCurrentDevice(current);
+                current = new DeviceBlock
+                {
+                    InstanceId = instanceId
+                };
+                inMatchingDrivers = false;
             }
-            else if (line.StartsWith("Driver Name:", StringComparison.OrdinalIgnoreCase))
+            else if (TryReadValue(line, "Device Description:", out var description))
             {
-                currentDriver = line[(line.IndexOf(':') + 1)..].Trim();
+                current.Description = description;
             }
-            else if (line.StartsWith("Service Name:", StringComparison.OrdinalIgnoreCase))
+            else if (line.StartsWith("Matching Drivers:", StringComparison.OrdinalIgnoreCase))
             {
-                currentService = line[(line.IndexOf(':') + 1)..].Trim();
+                inMatchingDrivers = true;
+            }
+            else if (!inMatchingDrivers && TryReadValue(line, "Driver Name:", out var driverName))
+            {
+                current.DriverName = driverName;
+            }
+            else if (!inMatchingDrivers && TryReadValue(line, "Service Name:", out var serviceName))
+            {
+                current.ServiceName = serviceName;
+            }
+            else if (TryReadValue(line, "Original Name:", out var originalName))
+            {
+                current.OriginalNames.Add(originalName);
+            }
+            else if (TryReadValue(line, "Provider Name:", out var providerName))
+            {
+                current.ProviderNames.Add(providerName);
             }
         }
 
-        TryAddCurrentDevice();
+        TryAddCurrentDevice(current);
         return devices;
 
-        void TryAddCurrentDevice()
+        static bool TryReadValue(string line, string prefix, out string value)
         {
-            if (string.IsNullOrWhiteSpace(currentName) && string.IsNullOrWhiteSpace(currentId))
+            if (line.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                value = line[prefix.Length..].Trim();
+                return true;
+            }
+
+            value = string.Empty;
+            return false;
+        }
+
+        void TryAddCurrentDevice(DeviceBlock device)
+        {
+            if (string.IsNullOrWhiteSpace(device.Description) && string.IsNullOrWhiteSpace(device.InstanceId))
             {
                 return;
             }
 
             var compatible = CompatibleTokens.Any(token =>
-                currentName.Contains(token, StringComparison.OrdinalIgnoreCase) ||
-                currentId.Contains(token, StringComparison.OrdinalIgnoreCase));
+                device.Description.Contains(token, StringComparison.OrdinalIgnoreCase) ||
+                device.InstanceId.Contains(token, StringComparison.OrdinalIgnoreCase));
 
             if (!compatible)
             {
                 return;
             }
 
-            var driverReady =
-                currentDriver.Contains("winusb", StringComparison.OrdinalIgnoreCase) ||
-                currentDriver.Contains("libusb", StringComparison.OrdinalIgnoreCase) ||
-                currentService.Contains("winusb", StringComparison.OrdinalIgnoreCase) ||
-                currentService.Contains("libusb", StringComparison.OrdinalIgnoreCase);
+            var driverReady = IsDriverReady(device);
 
             devices.Add(new SdrDeviceInfo(
-                currentName,
-                currentId,
+                string.IsNullOrWhiteSpace(device.Description) ? device.InstanceId : device.Description,
+                device.InstanceId,
                 true,
-                string.IsNullOrWhiteSpace(currentDriver) ? null : currentDriver,
-                string.IsNullOrWhiteSpace(currentService) ? null : currentService,
+                string.IsNullOrWhiteSpace(device.DriverName) ? null : device.DriverName,
+                string.IsNullOrWhiteSpace(device.ServiceName) ? null : device.ServiceName,
                 driverReady));
         }
+    }
+
+    private static bool IsDriverReady(DeviceBlock device)
+    {
+        if (ContainsAny(device.DriverName, "winusb", "libusb") ||
+            ContainsAny(device.ServiceName, "winusb", "libusb"))
+        {
+            return true;
+        }
+
+        if (ContainsAny(device.ProviderNames, "libwdi") &&
+            ContainsAny(device.OriginalNames, "rtl2838uhidir.inf", "rtl2832u.inf", "rtl-sdr"))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool ContainsAny(string? value, params string[] tokens) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        tokens.Any(token => value.Contains(token, StringComparison.OrdinalIgnoreCase));
+
+    private static bool ContainsAny(IEnumerable<string> values, params string[] tokens) =>
+        values.Any(value => ContainsAny(value, tokens));
+
+    private sealed class DeviceBlock
+    {
+        public string Description { get; set; } = string.Empty;
+        public string InstanceId { get; set; } = string.Empty;
+        public string DriverName { get; set; } = string.Empty;
+        public string ServiceName { get; set; } = string.Empty;
+        public List<string> OriginalNames { get; } = [];
+        public List<string> ProviderNames { get; } = [];
     }
 }
