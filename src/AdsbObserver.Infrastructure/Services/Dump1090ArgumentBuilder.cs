@@ -11,12 +11,11 @@ public static class Dump1090ArgumentBuilder
         var builder = new StringBuilder();
         AppendFlag(builder, "--net");
         Append(builder, "--config", configPath);
-        Append(builder, "--samplerate", settings.SampleRate.ToString(CultureInfo.InvariantCulture));
-        Append(builder, "--gain", settings.Gain.ToString(CultureInfo.InvariantCulture));
-        Append(builder, "--rtlsdr-ppm", settings.PpmCorrection.ToString(CultureInfo.InvariantCulture));
-        Append(builder, "--net-sbs-port", settings.DecoderPort.ToString(CultureInfo.InvariantCulture));
 
-        if (!string.IsNullOrWhiteSpace(settings.PreferredDeviceId))
+        // This dump1090 build expects tuner settings from config and does not accept
+        // Windows PnP instance IDs in --device.
+        if (!string.IsNullOrWhiteSpace(settings.PreferredDeviceId) &&
+            !settings.PreferredDeviceId.Contains('\\'))
         {
             Append(builder, "--device", settings.PreferredDeviceId);
         }

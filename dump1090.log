@@ -1,0 +1,10 @@
+﻿---------------------------------------------------------------------------------
+12:44:57.947: Starting: C:\Users\bebra\Documents\Playground\src\AdsbObserver.App\bin\Debug\net8.0-windows\backend\dump1090\dump1090.exe --net --config C:\Users\bebra\Documents\Playground\__dump1090_test.cfg
+              Build info: Microsoft cl 19.50.35727, built on: 4 Apr 2026
+
+12:44:58.511: Running with no `Modes.airport_db'
+12:44:58.519: Found 1 device(s):
+12:44:58.527: 0: Realtek    RTL2838UHIDIR        SN: 00000001 (currently selected)
+12:44:59.086: Supported gains: 0.0, 3.1, 6.5, 10.3, 14.3, 18.3, 22.3, 26.3, 30.3, 34.3, 38.3, 42.3, 46.3, 50.3, 54.3, 58.3, 62.3, 66.3, 70.3.
+12:44:59.125: Tuner gain set to 30 dB.
+12:44:59.143: Error setting frequency: -1.

@@ -22,10 +22,23 @@ public sealed class Dump1090ArgumentBuilderTests
 
         Assert.Contains("--net", arguments);
         Assert.Contains("--config \"C:\\portable\\backend\\dump1090\\dump1090.runtime.cfg\"", arguments);
-        Assert.Contains("--samplerate \"2400000\"", arguments);
-        Assert.Contains("--gain \"49.6\"", arguments);
-        Assert.Contains("--rtlsdr-ppm \"12\"", arguments);
-        Assert.Contains("--net-sbs-port \"30003\"", arguments);
-        Assert.Contains("--device \"USB\\VID_0BDA&PID_2838\"", arguments);
+        Assert.DoesNotContain("--samplerate", arguments);
+        Assert.DoesNotContain("--gain", arguments);
+        Assert.DoesNotContain("--rtlsdr-ppm", arguments);
+        Assert.DoesNotContain("--net-sbs-port", arguments);
+        Assert.DoesNotContain("--device", arguments);
+    }
+
+    [Fact]
+    public void Build_IncludesDevice_WhenSelectorLooksLikeBackendDeviceName()
+    {
+        var settings = new ObservationSettings
+        {
+            PreferredDeviceId = "RTL2838-silver"
+        };
+
+        var arguments = Dump1090ArgumentBuilder.Build(settings, @"C:\portable\backend\dump1090\dump1090.runtime.cfg");
+
+        Assert.Contains("--device \"RTL2838-silver\"", arguments);
     }
 }

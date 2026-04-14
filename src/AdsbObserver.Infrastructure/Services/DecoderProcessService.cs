@@ -163,14 +163,16 @@ public sealed class DecoderProcessService : IDecoderProcessService
             : Path.Combine(_workspace.LogsRoot, "dump1090.runtime.cfg");
 
         var configLines = File.ReadAllLines(templatePath).ToList();
+        RemoveConfigKey(configLines, "net-bo-port");
         UpsertConfigValue(configLines, "logfile", logPath);
         UpsertConfigValue(configLines, "gain", settings.Gain.ToString(CultureInfo.InvariantCulture));
         UpsertConfigValue(configLines, "samplerate", settings.SampleRate.ToString(CultureInfo.InvariantCulture));
         UpsertConfigValue(configLines, "rtlsdr-ppm", settings.PpmCorrection.ToString(CultureInfo.InvariantCulture));
         UpsertConfigValue(configLines, "net-sbs-port", settings.DecoderPort.ToString(CultureInfo.InvariantCulture));
+        UpsertConfigValue(configLines, "homepos", $"{settings.CenterLatitude.ToString(CultureInfo.InvariantCulture)},{settings.CenterLongitude.ToString(CultureInfo.InvariantCulture)}");
         UpsertConfigValue(configLines, "aircrafts", "NUL");
         UpsertConfigValue(configLines, "airports", "NUL");
-        UpsertConfigValue(configLines, "location", "false");
+        RemoveConfigKey(configLines, "location");
         UpsertConfigValue(configLines, "web-page", "NUL");
 
         File.WriteAllLines(runtimeConfigPath, configLines);
@@ -190,6 +192,18 @@ public sealed class DecoderProcessService : IDecoderProcessService
         }
 
         lines.Add($"{key} = {value}");
+    }
+
+    private static void RemoveConfigKey(IList<string> lines, string key)
+    {
+        for (var index = lines.Count - 1; index >= 0; index--)
+        {
+            var trimmed = lines[index].TrimStart();
+            if (trimmed.StartsWith($"{key} =", StringComparison.OrdinalIgnoreCase))
+            {
+                lines.RemoveAt(index);
+            }
+        }
     }
 
     private static async Task<bool> WaitForPortAsync(string host, int port, TimeSpan timeout, CancellationToken cancellationToken)
